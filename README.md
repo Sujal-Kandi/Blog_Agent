@@ -2,7 +2,9 @@
 
 > **Live App → [blog-agent-rho.vercel.app](https://blog-agent-rho.vercel.app)**
 
-A research-first AI blog writing agent that produces deeply researched, publish-ready blog posts. Not a ChatGPT wrapper — a full multi-step pipeline that searches the web, extracts real facts, critiques its own output, and scores the final result before showing you anything.
+AI blog posts all sound the same. Generic structure, cliché openers, no real research, conclusions that end with a question. This agent fixes that.
+
+It's a 9-step pipeline that searches the live web, extracts real facts, writes a draft, critiques its own output, scans for 30+ known clichés, generates SEO metadata, and scores the result before you ever see it. The output reads like it was written by someone who actually researched the topic.
 
 ---
 
@@ -127,7 +129,7 @@ Different steps use different temperatures — not one setting for everything:
 
 **1. Clone and install**
 ```bash
-git clone https://github.com/Bryan-eng-Ing/Blog_Agent
+git clone https://github.com/Sujal-Kandi/Blog_Agent
 cd Blog_Agent
 pip install -r requirements.txt
 ```

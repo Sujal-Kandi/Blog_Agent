@@ -166,7 +166,7 @@ def should_rewrite(state: BlogState) -> str:
 def build_graph():
     g = StateGraph(BlogState)
 
-    g.add_node("plan",            node_plan)
+    g.add_node("planner",         node_plan)
     g.add_node("research",        node_research)
     g.add_node("extract_facts",   node_extract_facts)
     g.add_node("retrieve_memory", node_retrieve_memory)
@@ -178,9 +178,9 @@ def build_graph():
     g.add_node("extras",          node_extras)
     g.add_node("save_memory",     node_save_memory)
 
-    g.set_entry_point("plan")
+    g.set_entry_point("planner")
 
-    g.add_edge("plan",            "research")
+    g.add_edge("planner",         "research")
     g.add_edge("research",        "extract_facts")
     g.add_edge("extract_facts",   "retrieve_memory")
     g.add_edge("retrieve_memory", "write")

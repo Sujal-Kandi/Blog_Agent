@@ -18,9 +18,9 @@ sentry_sdk.init(
     send_default_pii=False
 )
 if _sentry_dsn:
-    print("✅ Sentry initialized successfully")
+    print("Sentry initialized successfully")
 else:
-    print("⚠️  SENTRY_DSN not set — Sentry is disabled")
+    print("SENTRY_DSN not set - Sentry is disabled")
 
 # ── Logging setup ─────────────────────────────────────────────────────────────
 log_formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')

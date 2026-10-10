@@ -9,7 +9,7 @@ os.environ["LANGCHAIN_ENDPOINT"]   = os.getenv("LANGCHAIN_ENDPOINT", "https://ap
 os.environ["LANGCHAIN_API_KEY"]    = os.getenv("LANGCHAIN_API_KEY", "")
 os.environ["LANGCHAIN_PROJECT"]    = os.getenv("LANGCHAIN_PROJECT", "Blog_Agent")
 
-from typing import TypedDict, Optional
+from typing import Callable, ParamSpec, TypeVar, TypedDict
 from langgraph.graph import StateGraph, END
 
 from agent import (
@@ -52,11 +52,15 @@ class BlogState(TypedDict):
 
 # ── Node wrapper — cancels the whole pipeline on any node failure ─────────────
 
-def _guarded(fn):
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def _guarded(fn: Callable[P, R]) -> Callable[P, R]:
     """Decorator that cancels the pipeline if the node raises."""
-    def wrapper(state: BlogState) -> BlogState:
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         try:
-            return fn(state)
+            return fn(*args, **kwargs)
         except Exception:
             cancel_pipeline()
             raise
@@ -122,16 +126,16 @@ def node_fix_cliches(state: BlogState) -> BlogState:
     return state
 
 @_guarded
-def node_citations(state: BlogState) -> BlogState:
-    state["final_blog"] = generate_citations(
-        state["final_blog"], state["facts"], state["topic"]
-    )
-    return state
+def node_citations(state: BlogState) -> dict[str, str]:
+    return {
+        "final_blog": generate_citations(
+            state["final_blog"], state["facts"], state["topic"]
+        )
+    }
 
 @_guarded
-def node_extras(state: BlogState) -> BlogState:
-    state["extras"] = generate_extras(state["final_blog"], state["topic"])
-    return state
+def node_extras(state: BlogState) -> dict[str, object]:
+    return {"extras": generate_extras(state["final_blog"], state["topic"])}
 
 @_guarded
 def node_save_memory(state: BlogState) -> BlogState:
@@ -199,8 +203,8 @@ def build_graph():
     )
 
     g.add_edge("fix_cliches",     "citations")
-    g.add_edge("citations",       "extras")
-    g.add_edge("extras",          "save_memory")
+    g.add_edge("fix_cliches",     "extras")
+    g.add_edge(["citations", "extras"], "save_memory")
     g.add_edge("save_memory",     END)
 
     return g.compile()

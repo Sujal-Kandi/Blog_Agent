@@ -11,7 +11,6 @@ def web_search(query: str) -> str:
     response = client.search(query=query, search_depth="advanced", max_results=5)
     results = response.get("results", [])
     return "\n\n".join(
-        f"Title: {r['title']}\nURL: {r['url']}\nContent: {r['content']}"
+        f"Title: {r['title']}\nURL: {r['url']}\nContent: {r['content'][:900]}"
         for r in results
     )
-

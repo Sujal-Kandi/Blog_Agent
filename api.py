@@ -164,6 +164,11 @@ def generate_blog(request: BlogRequest):
         duration = time.time() - start
         msg = str(e).lower()
         logger.error(f"[FAILED] topic='{topic[:60]}' | duration={duration:.1f}s | error={str(e)[:120]}")
+        if "request too large for model" in msg:
+            raise HTTPException(
+                status_code=413,
+                detail="The request exceeds Groq's current token budget. Try a shorter topic or retry after the limit resets."
+            )
         if "rate limit" in msg or "rate limited" in msg or "429" in msg:
             raise HTTPException(
                 status_code=429,
@@ -174,5 +179,4 @@ def generate_blog(request: BlogRequest):
             status_code=500,
             detail="Something went wrong. Please try again."
         )
-
 

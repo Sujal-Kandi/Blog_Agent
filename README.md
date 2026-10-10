@@ -137,8 +137,8 @@ pip install -r requirements.txt
 **2. Create `.env`**
 ```
 TAVILY_API_KEY=your_tavily_key
-GROQ_KEY_1=your_groq_key_1
-GROQ_KEY_2=your_groq_key_2
+GROQ_API_KEY=your_groq_api_key
+GROQ_API_KEY_2=your_groq_api_key_2
 ```
 
 **3. Run CLI**

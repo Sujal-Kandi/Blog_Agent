@@ -38,7 +38,15 @@ from tools import web_search
 from langsmith import traceable
 
 
-GROQ_KEYS = [v for k, v in sorted(os.environ.items()) if k.startswith("GROQ_KEY") and v]
+GROQ_KEYS = [
+    value.strip()
+    for name, value in sorted(os.environ.items())
+    if (
+        name == "GROQ_API_KEY"
+        or name.startswith("GROQ_API_KEY_")
+        or name.startswith("GROQ_KEY_")
+    ) and value.strip()
+]
 _key_index = 0
 
 # ── Cancellation flag ─────────────────────────────────────────────────────────
@@ -69,7 +77,9 @@ def _invoke(prompt: str, temperature: float) -> str:
     _check_cancelled()  # bail out before making any LLM call
 
     if not GROQ_KEYS:
-        raise RuntimeError("No Groq API keys configured. Set at least one GROQ_KEY_* environment variable.")
+        raise RuntimeError(
+            "No Groq API keys configured. Set GROQ_API_KEY or one or more GROQ_API_KEY_* / GROQ_KEY_* variables."
+        )
 
     authentication_failures = 0
     attempts = len(GROQ_KEYS) * 2
@@ -97,7 +107,9 @@ def _invoke(prompt: str, temperature: float) -> str:
             _key_index = (_key_index + 1) % len(GROQ_KEYS)
 
     if authentication_failures == attempts:
-        raise RuntimeError("All configured Groq API keys were rejected. Check the GROQ_KEY_* values in Render.")
+        raise RuntimeError(
+            "All configured Groq API keys were rejected. Check the GROQ_API_KEY* / GROQ_KEY_* values in Render."
+        )
     raise RuntimeError("All configured Groq API keys are rate-limited or invalid. Check Render logs and try again.")
 #Groq Block
 

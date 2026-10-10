@@ -1,5 +1,6 @@
 const API_URL = 'https://blog-agent-699e.onrender.com';
 let selectedLength = 'medium';
+let progressTimers = [];
 
 // Wake up Render on page load
 fetch(`${API_URL}/docs`).catch(() => {});
@@ -19,7 +20,13 @@ function setStep(n, status) {
   step.className = 'step ' + status;
 }
 
+function clearProgressTimers() {
+  progressTimers.forEach(clearTimeout);
+  progressTimers = [];
+}
+
 function resetForm() {
+  clearProgressTimers();
   hide('outputSection');
   hide('progressSection');
   show('formSection');
@@ -46,18 +53,19 @@ async function generateBlog() {
   hide('formSection');
   show('progressSection');
 
-  // Animate steps while waiting
+  clearProgressTimers();
   const stepTimings = [0, 3000, 6000, 12000, 15000, 30000, 50000, 60000, 65000];
   stepTimings.forEach((delay, i) => {
-    setTimeout(() => {
+    progressTimers.push(setTimeout(() => {
       if (i > 0) setStep(i, 'done');
       setStep(i + 1, 'active');
-    }, delay);
+    }, delay));
   });
 
+  let timeout;
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 360000); // 6 min timeout
+    timeout = setTimeout(() => controller.abort(), 360000); // 6 min timeout
 
     const response = await fetch(`${API_URL}/generate-blog`, {
       method: 'POST',
@@ -67,6 +75,7 @@ async function generateBlog() {
     });
 
     clearTimeout(timeout);
+    clearProgressTimers();
 
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
@@ -84,6 +93,8 @@ async function generateBlog() {
     }, 800);
 
   } catch (err) {
+    clearTimeout(timeout);
+    clearProgressTimers();
     hide('progressSection');
     show('formSection');
     btn.disabled = false;

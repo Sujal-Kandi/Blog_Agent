@@ -190,8 +190,14 @@ body {
 .progress-title {
   font-family: 'Playfair Display', serif;
   font-size: 24px;
-  margin-bottom: 32px;
+  margin-bottom: 12px;
   color: var(--text);
+}
+.progress-note {
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0 0 28px;
 }
 .steps { display: flex; flex-direction: column; gap: 16px; }
 .step {

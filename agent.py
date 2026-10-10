@@ -33,7 +33,7 @@ logger.addHandler(file_handler)
 
 
 from langchain_groq import ChatGroq
-from groq import RateLimitError
+from groq import AuthenticationError, RateLimitError
 from tools import web_search
 from langsmith import traceable
 
@@ -68,8 +68,12 @@ def _invoke(prompt: str, temperature: float) -> str:
 
     _check_cancelled()  # bail out before making any LLM call
 
-    # Use Groq keys with rotation on rate limits.
-    for _ in range(len(GROQ_KEYS) * 2):
+    if not GROQ_KEYS:
+        raise RuntimeError("No Groq API keys configured. Set at least one GROQ_KEY_* environment variable.")
+
+    authentication_failures = 0
+    attempts = len(GROQ_KEYS) * 2
+    for _ in range(attempts):
         _check_cancelled()
         try:
             llm = ChatGroq(
@@ -87,8 +91,14 @@ def _invoke(prompt: str, temperature: float) -> str:
             for _ in range(2):
                 if _cancel_event.wait(timeout=1):
                     raise RuntimeError("Pipeline cancelled during Groq backoff.")
+        except AuthenticationError:
+            authentication_failures += 1
+            print(f"Invalid Groq API key {_key_index + 1}, switching...")
+            _key_index = (_key_index + 1) % len(GROQ_KEYS)
 
-    raise Exception("All LLM providers are rate limited. Try again in a minute.")
+    if authentication_failures == attempts:
+        raise RuntimeError("All configured Groq API keys were rejected. Check the GROQ_KEY_* values in Render.")
+    raise RuntimeError("All configured Groq API keys are rate-limited or invalid. Check Render logs and try again.")
 #Groq Block
 
 

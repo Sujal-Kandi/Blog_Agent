@@ -77,7 +77,7 @@ def _invoke(prompt: str, temperature: float) -> str:
         _check_cancelled()
         try:
             llm = ChatGroq(
-                model="llama-3.3-70b-versatile",
+                model="openai/gpt-oss-120b",
                 temperature=temperature,
                 api_key=GROQ_KEYS[_key_index]
             )

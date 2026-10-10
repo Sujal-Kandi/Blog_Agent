@@ -57,7 +57,7 @@ async function generateBlog() {
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 180000); // 3 min timeout
+    const timeout = setTimeout(() => controller.abort(), 360000); // 6 min timeout
 
     const response = await fetch(`${API_URL}/generate-blog`, {
       method: 'POST',
@@ -89,7 +89,7 @@ async function generateBlog() {
     btn.disabled = false;
     document.getElementById('btnText').textContent = 'Generate Blog';
     if (err.name === 'AbortError') {
-      alert('Request timed out. The server may be waking up — please try again in 30 seconds.');
+      alert('Request timed out after 6 minutes. Check the backend logs before retrying.');
     } else {
       alert(err.message || 'Something went wrong. Please try again.');
     }

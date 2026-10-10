@@ -95,6 +95,7 @@ def node_write(state: BlogState) -> BlogState:
         memory=state["memory"],
         length=state["length"],
         gap="",
+        facts=state["facts"],
     )
     state["final_blog"] = state["draft"]
     state["iteration"] = 0

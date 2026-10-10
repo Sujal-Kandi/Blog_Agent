@@ -293,12 +293,11 @@ Research Data:
 
 
 @traceable(name="write_blog")
-def write_blog(topic: str, audience: str, plan: str, research_data: str, memory: str, length: str = "medium", gap: str = "") -> str:
+def write_blog(topic: str, audience: str, plan: str, research_data: str, memory: str, length: str = "medium", gap: str = "", facts: str | None = None) -> str:
     _check_cancelled()
     logger.info(f"[WRITE] Starting | topic='{topic[:60]}' | length={length}")
     start = time.time()
-    time.sleep(3)
-    facts = extract_facts(topic, research_data)
+    verified_facts = facts if facts is not None else extract_facts(topic, research_data)
     length_instruction = LENGTH_GUIDE.get(length, LENGTH_GUIDE["medium"])
     gap_section = f"\nContent Gap (what existing articles miss — your blog must address this):\n{gap}\n" if gap else ""
 
@@ -313,7 +312,7 @@ Blog Plan:
 {plan}
 {gap_section}
 Verified Facts (use these — do not invent statistics):
-{facts}
+{verified_facts}
 
 Past Context (from memory):
 {memory}

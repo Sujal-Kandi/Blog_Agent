@@ -139,7 +139,6 @@ pip install -r requirements.txt
 TAVILY_API_KEY=your_tavily_key
 GROQ_KEY_1=your_groq_key_1
 GROQ_KEY_2=your_groq_key_2
-CEREBRAS_API_KEY=your_cerebras_key
 ```
 
 **3. Run CLI**

@@ -39,7 +39,6 @@ from langsmith import traceable
 
 
 GROQ_KEYS = [v for k, v in sorted(os.environ.items()) if k.startswith("GROQ_KEY") and v]
-CEREBRAS_KEY = os.getenv("CEREBRAS_API_KEY")
 _key_index = 0
 
 # ── Cancellation flag ─────────────────────────────────────────────────────────
@@ -69,34 +68,7 @@ def _invoke(prompt: str, temperature: float) -> str:
 
     _check_cancelled()  # bail out before making any LLM call
 
-    # Try Cerebras first — faster and higher rate limits
-    if CEREBRAS_KEY:
-        for attempt in range(3):
-            _check_cancelled()
-            try:
-                from langchain_cerebras import ChatCerebras
-                llm = ChatCerebras(
-                    model="gpt-oss-120b",
-                    temperature=temperature
-                )
-                return llm.invoke(prompt).content
-            except RuntimeError:
-                raise  # propagate cancellation immediately
-            except Exception as e:
-                err = str(e).lower()
-                if "rate" in err or "429" in err:
-                    print(f"Cerebras rate limit, waiting 10s... (attempt {attempt+1})")
-                    # Sleep in small chunks so cancellation is noticed quickly
-                    for _ in range(10):
-                        if _cancel_event.wait(timeout=1):
-                            raise RuntimeError("Pipeline cancelled during Cerebras backoff.")
-                else:
-                    print(f"Cerebras failed: {e}, falling back to Groq...")
-                    break
-
-# Above one Cerebras block
-
-    # Fall back to Groq with key rotation
+    # Use Groq keys with rotation on rate limits.
     for _ in range(len(GROQ_KEYS) * 2):
         _check_cancelled()
         try:

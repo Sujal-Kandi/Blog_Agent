@@ -17,6 +17,8 @@ still review facts, sources, tone, and claims before publishing.
 <img width="1800" height="950" alt="Screenshot 2026-10-14 232624" src="https://github.com/user-attachments/assets/5495e917-59cc-466c-9182-12d760251aef" />
 <img width="1810" height="963" alt="Screenshot 2026-10-14 232507" src="https://github.com/user-attachments/assets/18c257e7-62a6-4efb-bc31-97f7cd0756d6" />
 
+Full Demo Video Link [Youtube] - https://youtu.be/zfJL5BItpHI
+
 
 ## Contents
 

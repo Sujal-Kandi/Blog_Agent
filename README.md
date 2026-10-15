@@ -256,12 +256,21 @@ it as feedback for revision, not as proof of accuracy or search ranking.
 The pipeline supports multiple Groq API keys to reduce interruptions from
 provider rate limits.
 
-Instead of relying on one key, it can rotate across the configured keys.
-This helps a long research-and-writing run continue when one key reaches
-its rate limit.
+Keys are read from environment variables using the `GROQ_API_KEY` naming
+pattern:
 
-This is a resilience measure, not unlimited capacity. Provider quotas,
-account limits, and usage policies still apply.
+```env
+GROQ_API_KEY=...
+GROQ_API_KEY_2=...
+GROQ_API_KEY_3=...
+```
+
+When one key is rate-limited, the pipeline can rotate to another
+available configured key.
+
+The number of keys is flexible: add more `GROQ_API_KEY_*` variables as
+needed. This is a resilience measure, not unlimited capacity—provider
+quotas, account limits, and usage policies still apply.
 
 ## Tech stack
 
@@ -294,13 +303,19 @@ TAVILY_API_KEY=your_tavily_key
 GROQ_API_KEY=your_first_groq_key
 GROQ_API_KEY_2=your_second_groq_key
 GROQ_API_KEY_3=your_third_groq_key
-GROQ_API_KEY_4=your_fourth_groq_key
-GROQ_API_KEY_5=your_fifth_groq_key
-GROQ_API_KEY_6=your_sixth_groq_key
 ```
 
-The project supports multiple Groq API keys for rate-limit rotation. When
-one key is rate-limited, the pipeline can use another available key.
+The project supports multiple Groq API keys for rate-limit rotation.
+
+Add keys using the `GROQ_API_KEY` naming pattern:
+
+```env
+GROQ_API_KEY_4=your_fourth_groq_key
+GROQ_API_KEY_5=your_fifth_groq_key
+```
+
+You can configure as many keys as your setup requires. The rotation logic
+uses the available configured keys rather than requiring a fixed number.
 
 Do not commit real API keys.
 
@@ -401,6 +416,7 @@ rather than presenting the project as fully production-hardened.
 - SEO metadata does not guarantee search performance.
 - API key rotation reduces rate-limit interruptions but does not remove provider quotas.
 - Generated drafts require human review before publication.
+- API key rotation reduces rate-limit interruptions but does not remove provider quotas.
 
 ## Next work
 

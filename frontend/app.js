@@ -195,7 +195,8 @@ async function renderBlog(data) {
   let imageCount = 0;
   const maxImages = data.length === 'long' ? 3 : data.length === 'medium' ? 2 : 1;
   const imageKeywords = topic.split(' ').slice(0, 3).join(' ');
-  let headingCount = 0;
+  let h2Count = 0;   // tracks ## headings for image injection
+  let chapterCount = 0; // tracks ### headings for Chapter numbering
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
@@ -203,27 +204,35 @@ async function renderBlog(data) {
     if (!line) continue;
 
     // --- Explicit markdown heading detection ---
-    const h1Match = line.match(/^#\s+(.+)/);
-    const h2Match = line.match(/^##\s+(.+)/);
+    // Order matters: check ### before ## before #
     const h3Match = line.match(/^###\s+(.+)/);
+    const h2Match = !h3Match && line.match(/^##\s+(.+)/);
+    const h1Match = !h3Match && !h2Match && line.match(/^#\s+(.+)/);
 
     if (h3Match) {
-      bodyHtml += `<h3 class="blog-subsection-heading">${renderInline(h3Match[1])}</h3>`;
+      // Chapter storytelling style — gold label + Playfair heading
+      chapterCount++;
+      const chapterNum = String(chapterCount).padStart(2, '0');
+      bodyHtml += `
+        <div class="blog-chapter">
+          <span class="blog-chapter-label">Chapter ${chapterNum}</span>
+          <h3 class="blog-subsection-heading">${renderInline(h3Match[1])}</h3>
+        </div>`;
     } else if (h2Match) {
-      headingCount++;
+      h2Count++;
       bodyHtml += `<h2 class="blog-section-heading">${renderInline(h2Match[1])}</h2>`;
       // Inject image after every 2nd h2 heading
-      if (imageCount < maxImages && headingCount % 2 === 0) {
+      if (imageCount < maxImages && h2Count % 2 === 0) {
         const imgUrl = `https://source.unsplash.com/800x400/?${encodeURIComponent(imageKeywords)}&sig=${imageCount}`;
         bodyHtml += `<img src="${imgUrl}" alt="${topic}" class="blog-image" loading="lazy" />`;
         imageCount++;
       }
     } else if (h1Match) {
-      // H1 inside the body (e.g. subtitle line from LLM) — treat as H2
-      headingCount++;
+      // H1 inside the body — treat as H2
+      h2Count++;
       bodyHtml += `<h2 class="blog-section-heading">${renderInline(h1Match[1])}</h2>`;
     } else if (line.startsWith('---') || line.startsWith('***')) {
-      // Horizontal rule — skip, they're just separators in the LLM output
+      // Horizontal rule — skip separators from LLM output
       continue;
     } else {
       bodyHtml += `<p>${renderInline(line)}</p>`;
@@ -276,7 +285,8 @@ function downloadPDF() {
     .blog-article, #blogContent { background: #111111 !important; color: #f0ece4 !important; }
     .blog-title { color: #f0ece4 !important; }
     .blog-section-heading { color: #f0ece4 !important; }
-    .blog-subsection-heading { color: #c9a96e !important; }
+    .blog-chapter-label { color: #c9a96e !important; }
+    .blog-subsection-heading { color: #f0ece4 !important; }
     .blog-body { color: #d4cfc7 !important; }
     .blog-body p { color: #d4cfc7 !important; }
     .blog-tldr { background: #1a1a1a !important; border-left: 3px solid #c9a96e !important; }

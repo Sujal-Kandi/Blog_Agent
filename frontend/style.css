@@ -414,14 +414,29 @@ body {
   break-after: avoid;
 }
 
-.blog-subsection-heading {
-  font-family: 'Inter', sans-serif;
-  font-size: 15px;
+.blog-chapter {
+  margin: 36px 0 12px;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  page-break-after: avoid;
+  break-after: avoid;
+}
+.blog-chapter-label {
+  display: block;
+  font-size: 10px;
   font-weight: 700;
   color: var(--accent2);
   text-transform: uppercase;
-  letter-spacing: 0.9px;
-  margin: 28px 0 10px;
+  letter-spacing: 1.5px;
+  margin-bottom: 6px;
+}
+.blog-subsection-heading {
+  font-family: 'Playfair Display', serif;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.2px;
+  line-height: 1.3;
   page-break-after: avoid;
   break-after: avoid;
 }
@@ -526,7 +541,9 @@ body {
   }
   .blog-title { color: #111 !important; font-size: 28px !important; page-break-after: avoid; break-after: avoid; }
   .blog-section-heading { color: #222 !important; page-break-after: avoid; break-after: avoid; }
-  .blog-subsection-heading { color: #c9a96e !important; font-size: 13px !important; text-transform: uppercase; letter-spacing: 0.9px; page-break-after: avoid; break-after: avoid; }
+  .blog-chapter { page-break-inside: avoid; break-inside: avoid; page-break-after: avoid; break-after: avoid; }
+  .blog-chapter-label { color: #c9a96e !important; }
+  .blog-subsection-heading { color: #111 !important; }
   .blog-body { color: #333 !important; }
   .blog-body p { color: #333 !important; page-break-inside: avoid; break-inside: avoid; }
   .blog-body strong { font-weight: 700; }

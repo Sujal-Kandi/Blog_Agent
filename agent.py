@@ -329,7 +329,7 @@ Body:
 - After every stat or fact, explain what it means for the reader.
 - At least one strong analogy that makes something complex feel simple.
 - Short paragraphs — 2 to 4 lines. White space matters.
-- Plain text section headings. No hashtags, no bold markers, no emojis.
+- Section headings: use ### before each section heading. Nothing else — no ##, no bold, no emojis.
 - Depth is non-negotiable at any length. Short does not mean shallow.
 - Natural transitions — each section flows into the next.
 
@@ -378,8 +378,8 @@ Check:
 - Conclusion leaves the reader with something new?
 
 Rules:
-- No hashtags or emojis
-- Plain text headings
+- No emojis
+- Section headings must use ### prefix — nothing else
 - Short paragraphs, blank line between sections
 - No clichés: "journey not a destination", "unlock potential", "game changer" — banned
 - Write like a smart human, not a content farm

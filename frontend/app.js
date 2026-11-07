@@ -276,6 +276,7 @@ function downloadPDF() {
     .blog-article, #blogContent { background: #111111 !important; color: #f0ece4 !important; }
     .blog-title { color: #f0ece4 !important; }
     .blog-section-heading { color: #f0ece4 !important; }
+    .blog-subsection-heading { color: #888880 !important; }
     .blog-body { color: #d4cfc7 !important; }
     .blog-body p { color: #d4cfc7 !important; }
     .blog-tldr { background: #1a1a1a !important; border-left: 3px solid #c9a96e !important; }

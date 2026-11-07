@@ -269,7 +269,7 @@ function downloadPDF() {
   const filename = topic.replace(/[^a-z0-9]/gi, '_').toLowerCase().slice(0, 50) + '.pdf';
   const element = document.getElementById('blogContent');
 
-  // Inject dark-theme override styles so html2canvas captures them correctly
+  // Inject dark-theme styles
   const styleTag = document.createElement('style');
   styleTag.id = 'pdf-dark-styles';
   styleTag.textContent = `
@@ -291,48 +291,64 @@ function downloadPDF() {
     .seo-title { color: #555550 !important; }
     .seo-item label { color: #555550 !important; }
     .seo-item p { color: #888880 !important; }
-    /* Force page breaks before every section heading so html2canvas
-       captures each "chunk" separately and jsPDF stitches them cleanly */
-    .pdf-page-break { display: block; page-break-before: always; break-before: page; height: 0; }
   `;
   document.head.appendChild(styleTag);
 
-  // Insert explicit page-break divs before every H2 (except the very first)
-  // so html2pdf splits the canvas at natural section boundaries.
-  const headings = element.querySelectorAll('h2.blog-section-heading');
-  const injected = [];
-  headings.forEach((h, idx) => {
-    if (idx === 0) return; // don't break before the first heading
-    const br = document.createElement('div');
-    br.className = 'pdf-page-break';
-    h.parentNode.insertBefore(br, h);
-    injected.push(br);
-  });
+  // A4 dimensions in mm and px (at 96dpi)
+  const PDF_W_MM = 210;
+  const PDF_H_MM = 297;
+  const MARGIN_MM = 12;
+  const SCALE = 2;
+  const MM_TO_PX = 3.7795275591;
 
-  const opt = {
-    margin: [12, 12, 12, 12],
-    filename,
-    image: { type: 'jpeg', quality: 0.97 },
-    html2canvas: {
-      scale: 2,
-      backgroundColor: '#111111',
-      useCORS: true,
-      logging: false,
-      scrollX: 0,
-      scrollY: -window.scrollY,
-      windowWidth: document.documentElement.scrollWidth
-    },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-    pagebreak: {
-      // 'css' reads our page-break-before rules on .pdf-page-break divs
-      // 'avoid-all' prevents slicing inside any block element
-      mode: ['css', 'avoid-all']
+  const pageContentH_mm = PDF_H_MM - MARGIN_MM * 2;
+  const pageContentH_px = pageContentH_mm * MM_TO_PX * SCALE;
+
+  html2canvas(element, {
+    scale: SCALE,
+    backgroundColor: '#111111',
+    useCORS: true,
+    logging: false,
+    scrollX: 0,
+    scrollY: -window.scrollY,
+    windowWidth: document.documentElement.scrollWidth
+  }).then(canvas => {
+    const imgW_mm = PDF_W_MM - MARGIN_MM * 2;
+    const imgW_px = canvas.width;
+    const totalH_px = canvas.height;
+
+    // Scale factor: canvas px → mm
+    const pxToMm = imgW_mm / imgW_px;
+    const pageH_px = pageContentH_px;
+
+    // Build a jsPDF instance and slice the canvas into pages
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+
+    let yOffset = 0;
+    let pageNum = 0;
+
+    while (yOffset < totalH_px) {
+      // Slice this page's strip from the full canvas
+      const sliceH = Math.min(pageH_px, totalH_px - yOffset);
+      const pageCanvas = document.createElement('canvas');
+      pageCanvas.width = imgW_px;
+      pageCanvas.height = sliceH;
+      const ctx = pageCanvas.getContext('2d');
+      ctx.drawImage(canvas, 0, yOffset, imgW_px, sliceH, 0, 0, imgW_px, sliceH);
+
+      const imgData = pageCanvas.toDataURL('image/jpeg', 0.97);
+      const sliceH_mm = sliceH * pxToMm;
+
+      if (pageNum > 0) pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', MARGIN_MM, MARGIN_MM, imgW_mm, sliceH_mm);
+
+      yOffset += sliceH;
+      pageNum++;
     }
-  };
 
-  html2pdf().set(opt).from(element).save().then(() => {
-    // Clean up injected break divs
-    injected.forEach(el => el.remove());
+    pdf.save(filename);
+
     const tag = document.getElementById('pdf-dark-styles');
     if (tag) tag.remove();
   });

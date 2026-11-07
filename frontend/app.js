@@ -161,6 +161,14 @@ function cleanMarkdown(text) {
     .trim();
 }
 
+// Render inline markdown: **bold**, *italic*, [text](url)
+function renderInline(text) {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
+
 async function renderBlog(data) {
   const { topic, final_blog, extras, seo } = data;
 
@@ -182,29 +190,43 @@ async function renderBlog(data) {
     </div>`;
 
   // Parse blog into sections and inject images
-  const paragraphs = final_blog.split('\n').filter(l => l.trim());
+  const lines = final_blog.split('\n');
   let bodyHtml = '';
   let imageCount = 0;
   const maxImages = data.length === 'long' ? 3 : data.length === 'medium' ? 2 : 1;
   const imageKeywords = topic.split(' ').slice(0, 3).join(' ');
+  let headingCount = 0;
 
-  for (let i = 0; i < paragraphs.length; i++) {
-    const line = paragraphs[i].trim();
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const line = raw.trim();
     if (!line) continue;
 
-    // Detect section headings — short lines without punctuation at end
-    const isHeading = line.length < 80 && !line.endsWith('.') && !line.endsWith(',') && !line.startsWith('-') && i > 0;
+    // --- Explicit markdown heading detection ---
+    const h1Match = line.match(/^#\s+(.+)/);
+    const h2Match = line.match(/^##\s+(.+)/);
+    const h3Match = line.match(/^###\s+(.+)/);
 
-    if (isHeading && line.split(' ').length <= 10) {
-      bodyHtml += `<h2 class="blog-section-heading">${line}</h2>`;
-      // Inject image after every 2nd heading
-      if (imageCount < maxImages && i % 3 === 0) {
+    if (h3Match) {
+      bodyHtml += `<h3 class="blog-subsection-heading">${renderInline(h3Match[1])}</h3>`;
+    } else if (h2Match) {
+      headingCount++;
+      bodyHtml += `<h2 class="blog-section-heading">${renderInline(h2Match[1])}</h2>`;
+      // Inject image after every 2nd h2 heading
+      if (imageCount < maxImages && headingCount % 2 === 0) {
         const imgUrl = `https://source.unsplash.com/800x400/?${encodeURIComponent(imageKeywords)}&sig=${imageCount}`;
         bodyHtml += `<img src="${imgUrl}" alt="${topic}" class="blog-image" loading="lazy" />`;
         imageCount++;
       }
+    } else if (h1Match) {
+      // H1 inside the body (e.g. subtitle line from LLM) — treat as H2
+      headingCount++;
+      bodyHtml += `<h2 class="blog-section-heading">${renderInline(h1Match[1])}</h2>`;
+    } else if (line.startsWith('---') || line.startsWith('***')) {
+      // Horizontal rule — skip, they're just separators in the LLM output
+      continue;
     } else {
-      bodyHtml += `<p>${line}</p>`;
+      bodyHtml += `<p>${renderInline(line)}</p>`;
     }
   }
 
@@ -284,7 +306,20 @@ function downloadPDF() {
       scrollY: -window.scrollY,
       windowWidth: document.documentElement.scrollWidth
     },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    // Tell html2pdf to split pages at elements that have
+    // page-break-before / page-break-after / page-break-inside CSS rules.
+    // 'css' mode reads the actual break properties we set in style.css.
+    pagebreak: { mode: ['css', 'legacy'], avoid: [
+      '.blog-section-heading',
+      '.blog-subsection-heading',
+      '.blog-title',
+      '.blog-tldr',
+      '.blog-pull-quote',
+      '.blog-key-takeaway',
+      '.blog-image',
+      'p'
+    ]}
   };
 
   html2pdf().set(opt).from(element).save().then(() => {

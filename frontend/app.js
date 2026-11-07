@@ -276,7 +276,7 @@ function downloadPDF() {
     .blog-article, #blogContent { background: #111111 !important; color: #f0ece4 !important; }
     .blog-title { color: #f0ece4 !important; }
     .blog-section-heading { color: #f0ece4 !important; }
-    .blog-subsection-heading { color: #888880 !important; }
+    .blog-subsection-heading { color: #c9a96e !important; }
     .blog-body { color: #d4cfc7 !important; }
     .blog-body p { color: #d4cfc7 !important; }
     .blog-tldr { background: #1a1a1a !important; border-left: 3px solid #c9a96e !important; }
@@ -291,13 +291,28 @@ function downloadPDF() {
     .seo-title { color: #555550 !important; }
     .seo-item label { color: #555550 !important; }
     .seo-item p { color: #888880 !important; }
+    /* Force page breaks before every section heading so html2canvas
+       captures each "chunk" separately and jsPDF stitches them cleanly */
+    .pdf-page-break { display: block; page-break-before: always; break-before: page; height: 0; }
   `;
   document.head.appendChild(styleTag);
 
+  // Insert explicit page-break divs before every H2 (except the very first)
+  // so html2pdf splits the canvas at natural section boundaries.
+  const headings = element.querySelectorAll('h2.blog-section-heading');
+  const injected = [];
+  headings.forEach((h, idx) => {
+    if (idx === 0) return; // don't break before the first heading
+    const br = document.createElement('div');
+    br.className = 'pdf-page-break';
+    h.parentNode.insertBefore(br, h);
+    injected.push(br);
+  });
+
   const opt = {
-    margin: [10, 10, 10, 10],
+    margin: [12, 12, 12, 12],
     filename,
-    image: { type: 'jpeg', quality: 0.98 },
+    image: { type: 'jpeg', quality: 0.97 },
     html2canvas: {
       scale: 2,
       backgroundColor: '#111111',
@@ -308,22 +323,16 @@ function downloadPDF() {
       windowWidth: document.documentElement.scrollWidth
     },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-    // Tell html2pdf to split pages at elements that have
-    // page-break-before / page-break-after / page-break-inside CSS rules.
-    // 'css' mode reads the actual break properties we set in style.css.
-    pagebreak: { mode: ['css', 'legacy'], avoid: [
-      '.blog-section-heading',
-      '.blog-subsection-heading',
-      '.blog-title',
-      '.blog-tldr',
-      '.blog-pull-quote',
-      '.blog-key-takeaway',
-      '.blog-image',
-      'p'
-    ]}
+    pagebreak: {
+      // 'css' reads our page-break-before rules on .pdf-page-break divs
+      // 'avoid-all' prevents slicing inside any block element
+      mode: ['css', 'avoid-all']
+    }
   };
 
   html2pdf().set(opt).from(element).save().then(() => {
+    // Clean up injected break divs
+    injected.forEach(el => el.remove());
     const tag = document.getElementById('pdf-dark-styles');
     if (tag) tag.remove();
   });

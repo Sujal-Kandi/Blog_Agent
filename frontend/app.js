@@ -309,6 +309,14 @@ async function renderBlog(data) {
     ${takeawayHtml}
     ${seoHtml}
   `;
+
+  // Ensure all links in sources open in a new tab when clicked
+  document.querySelectorAll('.blog-sources-list a').forEach(link => {
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      window.open(link.getAttribute('href'), '_blank', 'noopener');
+    });
+  });
 }
 
 function downloadPDF() {

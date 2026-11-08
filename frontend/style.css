@@ -524,6 +524,8 @@ body {
   text-decoration-color: rgba(232, 213, 176, 0.3);
   text-underline-offset: 3px;
   transition: color 0.2s, text-decoration-color 0.2s;
+  cursor: pointer;
+  pointer-events: auto;
 }
 .blog-sources-list a:hover {
   color: var(--accent2);

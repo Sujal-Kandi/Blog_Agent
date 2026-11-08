@@ -208,25 +208,6 @@ In 2-3 sentences: what angle do most articles on this topic take, and what uniqu
 
 
 
-def analyze_competitor_gap(topic: str) -> str:
-    # Merged into plan_blog to save LLM calls
-    return ""
-    queries = [
-        topic,
-        f"{topic} surprising facts and lesser known insights",
-        f"{topic} recent data statistics research 2024 2025",
-        f"{topic} common misconceptions and expert perspectives"
-    ]
-
-    def fetch(q):
-        result = web_search(q)
-        return f"Query: {q}\n{result}"
-
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        results = list(executor.map(fetch, queries))
-
-    return "\n\n".join(results)
-
 
 @traceable(name="research")
 def research(topic: str) -> str:

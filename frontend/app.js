@@ -1,9 +1,22 @@
 const API_URL = 'https://blog-agent-699e.onrender.com';
 let selectedLength = 'medium';
 let progressTimers = [];
+let _lastTopic = ''; // store topic so PDF filename survives resetForm()
 
 // Wake up Render on page load
 fetch(`${API_URL}/docs`).catch(() => {});
+
+// Re-enable generate button on load — guards against stuck state after refresh
+window.addEventListener('load', () => {
+  const btn = document.getElementById('generateBtn');
+  if (btn) {
+    btn.disabled = false;
+    document.getElementById('btnText').textContent = 'Generate Blog';
+  }
+  hide('progressSection');
+  hide('outputSection');
+  show('formSection');
+});
 
 function selectLength(length) {
   selectedLength = length;
@@ -45,6 +58,8 @@ async function generateBlog() {
     setTimeout(() => document.getElementById('topicInput').style.borderColor = '', 2000);
     return;
   }
+
+  _lastTopic = topic; // save before form gets cleared
 
   const btn = document.getElementById('generateBtn');
   btn.disabled = true;
@@ -342,7 +357,7 @@ async function renderBlog(data) {
 }
 
 function downloadPDF() {
-  const topic = document.getElementById('topicInput').value.trim() || 'blog';
+  const topic = _lastTopic || document.getElementById('topicInput').value.trim() || 'blog';
   const filename = topic.replace(/[^a-z0-9]/gi, '_').toLowerCase().slice(0, 50) + '.pdf';
   const element = document.getElementById('blogContent');
 

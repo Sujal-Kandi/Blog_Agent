@@ -292,23 +292,33 @@ Length: {length_instruction}
 Blog Plan:
 {plan}
 {gap_section}
-Research Dossier (your ONLY source of facts — do not use training knowledge for statistics or claims):
+
+════════════════════════════════════════
+RESEARCH DOSSIER — YOUR ONLY FACT SOURCE
+════════════════════════════════════════
 {verified_facts}
+════════════════════════════════════════
 
 Past Context (from memory):
 {memory}
 
-CRITICAL RULES on facts:
-- Use ONLY facts from the Research Dossier above — never invent statistics
-- CONFIRMED FACTS: cite directly and confidently
-- SINGLE-SOURCE FACTS: attribute them — "according to [source name]..."
-- DISPUTED CLAIMS: acknowledge both sides — "some sources suggest... while others report..."
-- If a fact is not in the dossier, do not state it as fact — frame as context or skip it
+══════════════════════════════════════════════════
+ABSOLUTE RULES — FACTS (violating these is a failure)
+══════════════════════════════════════════════════
+1. Every number, percentage, statistic, or named measurement in your blog MUST appear word-for-word in the Research Dossier above.
+2. If a number is NOT in the dossier — do NOT write it. Not even a plausible-sounding estimate.
+3. Do not use your training knowledge for any factual claim. The dossier is the only truth.
+4. CONFIRMED FACTS in the dossier: state them directly and confidently.
+5. SINGLE-SOURCE FACTS: attribute them — "according to [source name]..."
+6. DISPUTED CLAIMS: write "some analysts suggest X, while others report Y"
+7. If the dossier has no numbers for a section — write the insight without numbers. Strong analysis does not require invented statistics.
+8. Never write a specific year, match, or event unless it is explicitly named in the dossier.
+══════════════════════════════════════════════════
 
-Rules — non-negotiable:
+Writing rules — non-negotiable:
 
 Opening:
-- First sentence must be specific. A stat, a contradiction, a scene, or an uncomfortable truth.
+- First sentence must be specific. Use a real stat from the dossier, a contradiction, a scene, or a hard truth.
 - No "In today's world..." or "Have you ever wondered..." ever.
 - Talk directly to the reader's exact situation.
 
@@ -317,8 +327,7 @@ Body:
 - After every stat or fact, explain what it means for the reader.
 - At least one strong analogy that makes something complex feel simple.
 - Short paragraphs — 2 to 4 lines. White space matters.
-- Section headings: use ### before each section heading. Nothing else — no ##, no bold, no emojis.
-- Depth is non-negotiable at any length. Short does not mean shallow.
+- Section headings: use ### before each heading. Nothing else — no ##, no bold, no emojis.
 - Natural transitions — each section flows into the next.
 
 Tone:
@@ -334,15 +343,55 @@ Conclusion:
 
 No hashtags or emojis. Blank line between sections.
 
-Write the full blog now.
+Write the full blog now. Remember: every number must come from the dossier.
 """
     result = _invoke(prompt, temperature=0.6)
     logger.info(f"[WRITE] Done | duration={time.time()-start:.1f}s | words={len(result.split())}")
     return result
 
 
-@traceable(name="critique_and_rewrite")
-def critique_and_rewrite(blog: str, topic: str, audience: str) -> str:
+@traceable(name="audit_facts")
+def audit_facts(blog: str, dossier: str, topic: str) -> str:
+    """
+    Post-write fact audit — finds every number/statistic in the blog,
+    checks if it exists in the dossier, removes or replaces hallucinated ones.
+    Runs between write and critique_rewrite.
+    """
+    _check_cancelled()
+    logger.info(f"[AUDIT] Starting fact audit | topic='{topic[:60]}'")
+    start = time.time()
+
+    prompt = f"""
+You are a fact auditor. Your job is to find and fix hallucinated statistics in a blog.
+
+Topic: {topic}
+
+VERIFIED DOSSIER (the only allowed source of facts):
+{dossier}
+
+BLOG TO AUDIT:
+{blog}
+
+Your task:
+1. Find every specific number, percentage, statistic, measurement, or named data point in the blog.
+2. For each one — check if it exists in the dossier above.
+3. If it EXISTS in the dossier → keep it exactly as is.
+4. If it does NOT exist in the dossier → do one of these:
+   a. If the dossier has the correct version of this fact → replace with the correct dossier value
+   b. If the dossier has no version of this fact → remove the number and rephrase without it
+      Example: "his strike rate of 90 in Tests" → "his strike rate in Tests" or remove the sentence
+5. Do NOT add any new facts that aren't in the dossier.
+6. Do NOT change anything else — tone, structure, headings, paragraphs must stay identical.
+7. If a sentence becomes awkward after removing a number, rewrite only that sentence naturally.
+
+Return the full corrected blog. No commentary, no explanation — just the blog.
+"""
+    result = _invoke(prompt, temperature=0.0)
+    logger.info(f"[AUDIT] Done | duration={time.time()-start:.1f}s")
+    return result
+
+
+
     _check_cancelled()
     logger.info(f"[CRITIQUE] Starting rewrite | topic='{topic[:60]}'")
     start = time.time()

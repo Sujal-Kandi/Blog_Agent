@@ -18,6 +18,7 @@ from agent import (
     analyze_competitor_gap,
     extract_facts,
     write_blog,
+    audit_facts,
     critique_and_rewrite,
     fix_cliches,
     generate_seo,
@@ -118,6 +119,14 @@ def node_write(state: BlogState) -> BlogState:
     return state
 
 @_guarded
+def node_audit_facts(state: BlogState) -> BlogState:
+    """Strips hallucinated numbers — runs right after write, before critique."""
+    state["final_blog"] = audit_facts(
+        state["final_blog"], state["research_data"], state["topic"]
+    )
+    return state
+
+@_guarded
 def node_critique_rewrite(state: BlogState) -> BlogState:
     state["final_blog"] = critique_and_rewrite(
         state["final_blog"], state["topic"], state["audience"]
@@ -189,6 +198,7 @@ def build_graph():
     g.add_node("extract_facts",   node_extract_facts)
     g.add_node("retrieve_memory", node_retrieve_memory)
     g.add_node("write",           node_write)
+    g.add_node("audit_facts",     node_audit_facts)
     g.add_node("critique_rewrite",node_critique_rewrite)
     g.add_node("score",           node_score)
     g.add_node("fix_cliches",     node_fix_cliches)
@@ -198,15 +208,13 @@ def build_graph():
 
     g.set_entry_point("planner")
 
-    # competitor_gap runs in parallel with planner output
-    # research waits for competitor_gap so it can pass gap into the engine
     g.add_edge("planner",         "competitor_gap")
     g.add_edge("competitor_gap",  "research")
     g.add_edge("research",        "extract_facts")  # no-op pass-through
-
     g.add_edge("extract_facts",   "retrieve_memory")
     g.add_edge("retrieve_memory", "write")
-    g.add_edge("write",           "critique_rewrite")
+    g.add_edge("write",           "audit_facts")     # ← fact audit before critique
+    g.add_edge("audit_facts",     "critique_rewrite")
     g.add_edge("critique_rewrite","score")
 
     # Conditional: rewrite again if score < 8, else continue

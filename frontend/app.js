@@ -278,7 +278,7 @@ function downloadPDF() {
   const filename = topic.replace(/[^a-z0-9]/gi, '_').toLowerCase().slice(0, 50) + '.pdf';
   const element = document.getElementById('blogContent');
 
-  // Inject dark-theme styles
+  // Inject dark-theme styles + hide images (broken Unsplash URLs)
   const styleTag = document.createElement('style');
   styleTag.id = 'pdf-dark-styles';
   styleTag.textContent = `
@@ -301,18 +301,34 @@ function downloadPDF() {
     .seo-title { color: #555550 !important; }
     .seo-item label { color: #555550 !important; }
     .seo-item p { color: #888880 !important; }
+    .blog-image { display: none !important; }
   `;
   document.head.appendChild(styleTag);
 
-  // A4 dimensions in mm and px (at 96dpi)
-  const PDF_W_MM = 210;
-  const PDF_H_MM = 297;
-  const MARGIN_MM = 12;
-  const SCALE = 2;
-  const MM_TO_PX = 3.7795275591;
+  const PDF_W_MM   = 210;
+  const PDF_H_MM   = 297;
+  const MARGIN_MM  = 14;
+  const SCALE      = 2;
+  const MM_TO_PX   = 3.7795275591;
 
-  const pageContentH_mm = PDF_H_MM - MARGIN_MM * 2;
-  const pageContentH_px = pageContentH_mm * MM_TO_PX * SCALE;
+  // Reserve 6mm at the bottom for page numbers
+  const PAGE_NUM_H_MM = 6;
+  const contentH_mm   = PDF_H_MM - MARGIN_MM * 2 - PAGE_NUM_H_MM;
+  const contentH_px   = contentH_mm * MM_TO_PX * SCALE;
+  const imgW_mm       = PDF_W_MM - MARGIN_MM * 2;
+
+  // Collect the top-offsets (relative to blogContent) of every element
+  // we must NOT split across: chapter blocks, pull quotes, key takeaway, tldr
+  const avoidBreakEls = element.querySelectorAll(
+    '.blog-chapter, .blog-pull-quote, .blog-key-takeaway, .blog-tldr, .seo-section'
+  );
+  const elementRect = element.getBoundingClientRect();
+
+  // Build a sorted list of "avoid-break" top positions in canvas px
+  const avoidTops = Array.from(avoidBreakEls).map(el => {
+    const r = el.getBoundingClientRect();
+    return (r.top - elementRect.top + window.scrollY) * SCALE;
+  }).sort((a, b) => a - b);
 
   html2canvas(element, {
     scale: SCALE,
@@ -323,42 +339,69 @@ function downloadPDF() {
     scrollY: -window.scrollY,
     windowWidth: document.documentElement.scrollWidth
   }).then(canvas => {
-    const imgW_mm = PDF_W_MM - MARGIN_MM * 2;
-    const imgW_px = canvas.width;
-    const totalH_px = canvas.height;
+    const imgW_px    = canvas.width;
+    const totalH_px  = canvas.height;
+    const pxToMm     = imgW_mm / imgW_px;
 
-    // Scale factor: canvas px → mm
-    const pxToMm = imgW_mm / imgW_px;
-    const pageH_px = pageContentH_px;
-
-    // Build a jsPDF instance and slice the canvas into pages
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
 
-    let yOffset = 0;
-    let pageNum = 0;
+    // Content-aware page splitting:
+    // For each proposed slice boundary, check if it would cut through
+    // an avoid-break element. If yes, move the boundary up to just
+    // before that element's top so it starts fresh on the next page.
+    function smartSplitY(currentY) {
+      const proposed = currentY + contentH_px;
+      if (proposed >= totalH_px) return totalH_px; // last page
+
+      // Look for any avoid-break element that starts within 80px of
+      // the proposed cut line — nudge the cut up to just before it
+      const LOOKAHEAD = 80 * SCALE;
+      for (const top of avoidTops) {
+        if (top > proposed - LOOKAHEAD && top < proposed + LOOKAHEAD) {
+          // snap cut to just before this element (4px gap)
+          return Math.max(currentY + 1, top - 4);
+        }
+      }
+      return proposed;
+    }
+
+    let yOffset  = 0;
+    let pageNum  = 0;
 
     while (yOffset < totalH_px) {
-      // Slice this page's strip from the full canvas
-      const sliceH = Math.min(pageH_px, totalH_px - yOffset);
-      const pageCanvas = document.createElement('canvas');
-      pageCanvas.width = imgW_px;
-      pageCanvas.height = sliceH;
-      const ctx = pageCanvas.getContext('2d');
-      ctx.drawImage(canvas, 0, yOffset, imgW_px, sliceH, 0, 0, imgW_px, sliceH);
+      const nextY   = smartSplitY(yOffset);
+      const sliceH  = nextY - yOffset;
 
-      const imgData = pageCanvas.toDataURL('image/jpeg', 0.97);
+      const pageCanvas     = document.createElement('canvas');
+      pageCanvas.width     = imgW_px;
+      pageCanvas.height    = sliceH;
+      pageCanvas.getContext('2d').drawImage(
+        canvas, 0, yOffset, imgW_px, sliceH, 0, 0, imgW_px, sliceH
+      );
+
+      const imgData   = pageCanvas.toDataURL('image/jpeg', 0.97);
       const sliceH_mm = sliceH * pxToMm;
 
       if (pageNum > 0) pdf.addPage();
+
       pdf.addImage(imgData, 'JPEG', MARGIN_MM, MARGIN_MM, imgW_mm, sliceH_mm);
 
-      yOffset += sliceH;
+      // Page number — bottom center
       pageNum++;
+      pdf.setFontSize(9);
+      pdf.setTextColor(120, 110, 100);
+      pdf.text(
+        String(pageNum),
+        PDF_W_MM / 2,
+        PDF_H_MM - MARGIN_MM + 2,
+        { align: 'center' }
+      );
+
+      yOffset = nextY;
     }
 
     pdf.save(filename);
-
     const tag = document.getElementById('pdf-dark-styles');
     if (tag) tag.remove();
   });

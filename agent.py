@@ -391,7 +391,8 @@ Return the full corrected blog. No commentary, no explanation — just the blog.
     return result
 
 
-
+@traceable(name="critique_and_rewrite")
+def critique_and_rewrite(blog: str, topic: str, audience: str) -> str:
     _check_cancelled()
     logger.info(f"[CRITIQUE] Starting rewrite | topic='{topic[:60]}'")
     start = time.time()

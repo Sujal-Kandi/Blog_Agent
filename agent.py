@@ -479,7 +479,9 @@ Your job:
 Rules:
 - Only cite facts that actually appear in the blog
 - Keep the citation markers minimal and unobtrusive
-- The Sources section should be clean: [1] Source name or URL
+- The Sources section format must be exactly: [1] Source name — URL
+- If a URL is available in the facts, always include it after a dash
+- If no URL, just the source name is fine
 - Do not change any other part of the blog
 
 Verified Facts with Sources:

@@ -212,8 +212,35 @@ async function renderBlog(data) {
     }
 
     if (inSources) {
-      // Collect citation lines like [1] Source name
-      sourcesHtml += `<li>${renderInline(line)}</li>`;
+      // Parse: [1] Source name — URL  or  [1] Source name
+      const citMatch = line.match(/^\[(\d+)\]\s+(.+)/);
+      if (citMatch) {
+        const num = citMatch[1];
+        const rest = citMatch[2];
+        // Split on " — " or " - " to separate name from URL
+        const dashIdx = rest.search(/\s[—\-]\s/);
+        if (dashIdx !== -1) {
+          const name = rest.slice(0, dashIdx).trim();
+          const url  = rest.slice(dashIdx).replace(/^\s[—\-]\s/, '').trim();
+          const isUrl = url.startsWith('http');
+          sourcesHtml += `<li><span class="src-num">[${num}]</span> ${
+            isUrl
+              ? `<a href="${url}" target="_blank" rel="noopener">${name}</a>`
+              : name
+          }</li>`;
+        } else {
+          // No URL — just show the text, check if it IS a raw URL
+          const isUrl = rest.startsWith('http');
+          sourcesHtml += `<li><span class="src-num">[${num}]</span> ${
+            isUrl
+              ? `<a href="${rest}" target="_blank" rel="noopener">${rest}</a>`
+              : rest
+          }</li>`;
+        }
+      } else {
+        // Non-numbered line in sources (rare) — show as-is
+        sourcesHtml += `<li>${renderInline(line)}</li>`;
+      }
       continue;
     }
 

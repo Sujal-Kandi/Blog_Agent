@@ -493,31 +493,41 @@ body {
   break-inside: avoid;
 }
 .blog-sources-title {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 .blog-sources-list {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   padding: 0;
 }
 .blog-sources-list li {
   font-size: 13px;
-  color: var(--text-dim);
-  line-height: 1.5;
+  color: var(--text-muted);
+  line-height: 1.6;
 }
-.blog-sources-list li a {
+.blog-sources-list .src-num {
   color: var(--accent2);
-  text-decoration: none;
+  font-size: 11px;
+  font-weight: 600;
+  margin-right: 6px;
 }
-.blog-sources-list li a:hover {
+.blog-sources-list a {
+  color: var(--text-muted);
   text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 3px;
+  transition: color 0.2s, text-decoration-color 0.2s;
+}
+.blog-sources-list a:hover {
+  color: var(--accent2);
+  text-decoration-color: var(--accent2);
 }
 .seo-section {
   margin-top: 32px;

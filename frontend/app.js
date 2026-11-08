@@ -273,11 +273,12 @@ async function renderBlog(data) {
       h2Count++;
       bodyLineCount++;
       bodyHtml += `<h2 class="blog-section-heading">${renderInline(h2Match[1])}</h2>`;
-      if (imageCount < maxImages && h2Count % 2 === 0) {
-        const imgUrl = `https://source.unsplash.com/800x400/?${encodeURIComponent(imageKeywords)}&sig=${imageCount}`;
-        bodyHtml += `<img src="${imgUrl}" alt="${topic}" class="blog-image" loading="lazy" />`;
-        imageCount++;
-      }
+      // Images disabled for now — will re-enable with a proper image API in future
+      // if (imageCount < maxImages && h2Count % 2 === 0) {
+      //   const imgUrl = `https://source.unsplash.com/800x400/?${encodeURIComponent(imageKeywords)}&sig=${imageCount}`;
+      //   bodyHtml += `<img src="${imgUrl}" alt="${topic}" class="blog-image" loading="lazy" />`;
+      //   imageCount++;
+      // }
     } else if (h1Match) {
       h2Count++;
       bodyLineCount++;

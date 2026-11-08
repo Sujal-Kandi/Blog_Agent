@@ -195,22 +195,34 @@ async function renderBlog(data) {
   let imageCount = 0;
   const maxImages = data.length === 'long' ? 3 : data.length === 'medium' ? 2 : 1;
   const imageKeywords = topic.split(' ').slice(0, 3).join(' ');
-  let h2Count = 0;   // tracks ## headings for image injection
-  let chapterCount = 0; // tracks ### headings for Chapter numbering
+  let h2Count = 0;
+  let chapterCount = 0;
+  let inSources = false;
+  let sourcesHtml = '';
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     const line = raw.trim();
     if (!line) continue;
 
+    // Detect Sources section — plain text heading from LLM
+    if (/^sources\s*$/i.test(line) || /^##\s*sources\s*$/i.test(line) || /^###\s*sources\s*$/i.test(line)) {
+      inSources = true;
+      continue;
+    }
+
+    if (inSources) {
+      // Collect citation lines like [1] Source name
+      sourcesHtml += `<li>${renderInline(line)}</li>`;
+      continue;
+    }
+
     // --- Explicit markdown heading detection ---
-    // Order matters: check ### before ## before #
     const h3Match = line.match(/^###\s+(.+)/);
     const h2Match = !h3Match && line.match(/^##\s+(.+)/);
     const h1Match = !h3Match && !h2Match && line.match(/^#\s+(.+)/);
 
     if (h3Match) {
-      // Chapter storytelling style — gold label + Playfair heading
       chapterCount++;
       const chapterNum = String(chapterCount).padStart(2, '0');
       bodyHtml += `
@@ -221,23 +233,27 @@ async function renderBlog(data) {
     } else if (h2Match) {
       h2Count++;
       bodyHtml += `<h2 class="blog-section-heading">${renderInline(h2Match[1])}</h2>`;
-      // Inject image after every 2nd h2 heading
       if (imageCount < maxImages && h2Count % 2 === 0) {
         const imgUrl = `https://source.unsplash.com/800x400/?${encodeURIComponent(imageKeywords)}&sig=${imageCount}`;
         bodyHtml += `<img src="${imgUrl}" alt="${topic}" class="blog-image" loading="lazy" />`;
         imageCount++;
       }
     } else if (h1Match) {
-      // H1 inside the body — treat as H2
       h2Count++;
       bodyHtml += `<h2 class="blog-section-heading">${renderInline(h1Match[1])}</h2>`;
     } else if (line.startsWith('---') || line.startsWith('***')) {
-      // Horizontal rule — skip separators from LLM output
       continue;
     } else {
       bodyHtml += `<p>${renderInline(line)}</p>`;
     }
   }
+
+  // Build sources block if any citations were found
+  const sourcesBlock = sourcesHtml ? `
+    <div class="blog-sources">
+      <div class="blog-sources-title">Sources</div>
+      <ol class="blog-sources-list">${sourcesHtml}</ol>
+    </div>` : '';
 
   // Pull quote
   const pullQuoteHtml = extras.pull_quote ? `
@@ -267,6 +283,7 @@ async function renderBlog(data) {
     ${metaHtml}
     <h1 class="blog-title">${topic}</h1>
     <div class="blog-body">${bodyHtml}</div>
+    ${sourcesBlock}
     ${pullQuoteHtml}
     ${takeawayHtml}
     ${seoHtml}
@@ -301,6 +318,9 @@ function downloadPDF() {
     .seo-title { color: #555550 !important; }
     .seo-item label { color: #555550 !important; }
     .seo-item p { color: #888880 !important; }
+    .blog-sources { border-top: 1px solid #333 !important; }
+    .blog-sources-title { color: #555550 !important; }
+    .blog-sources-list li { color: #555550 !important; }
     .blog-image { display: none !important; }
   `;
   document.head.appendChild(styleTag);
@@ -320,7 +340,7 @@ function downloadPDF() {
   // Collect the top-offsets (relative to blogContent) of every element
   // we must NOT split across: chapter blocks, pull quotes, key takeaway, tldr
   const avoidBreakEls = element.querySelectorAll(
-    '.blog-chapter, .blog-pull-quote, .blog-key-takeaway, .blog-tldr, .seo-section'
+    '.blog-chapter, .blog-pull-quote, .blog-key-takeaway, .blog-tldr, .seo-section, .blog-sources'
   );
   const elementRect = element.getBoundingClientRect();
 

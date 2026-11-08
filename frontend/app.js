@@ -206,15 +206,13 @@ async function renderBlog(data) {
     const line = raw.trim();
     if (!line) continue;
 
-    // Detect Sources section — plain text, markdown heading, or bold from LLM
-    // Only allow Sources detection after we've seen at least 5 body lines
-    // (prevents false triggers if LLM puts a "Sources:" note early in the blog)
+    // Detect Sources section — only after substantial body content (10+ lines)
+    // Handles: "Sources", "## Sources", "### Sources", "**Sources**", "Sources:"
     if (
-      bodyLineCount >= 5 &&
+      bodyLineCount >= 10 &&
       (
         /^sources\s*$/i.test(line) ||
-        /^##\s*sources\s*$/i.test(line) ||
-        /^###\s*sources\s*$/i.test(line) ||
+        /^#{1,3}\s*sources\s*$/i.test(line) ||
         /^\*\*sources\*\*\s*$/i.test(line) ||
         /^sources\s*:\s*$/i.test(line)
       )
@@ -236,19 +234,24 @@ async function renderBlog(data) {
           const url  = urlMatch[2].trim();
           sourcesHtml += `<li><span class="src-num">[${num}]</span> <a href="${url}" target="_blank" rel="noopener">${name}</a></li>`;
         } else {
-          // Strip any dangling " —" with nothing after it
           const clean = rest.replace(/\s+[—\-]+\s*$/, '').trim();
           if (clean.startsWith('http')) {
             sourcesHtml += `<li><span class="src-num">[${num}]</span> <a href="${clean}" target="_blank" rel="noopener">${clean}</a></li>`;
           } else {
-            // No URL found — fall back to a Google search so it's still clickable
             const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(clean)}`;
             sourcesHtml += `<li><span class="src-num">[${num}]</span> <a href="${searchUrl}" target="_blank" rel="noopener">${clean}</a></li>`;
           }
         }
-      } else {
-        sourcesHtml += `<li>${renderInline(line)}</li>`;
+      } else if (line.startsWith('http')) {
+        // Bare URL line — make it clickable
+        sourcesHtml += `<li><a href="${line}" target="_blank" rel="noopener">${line}</a></li>`;
+      } else if (line.match(/^[—\-]\s+/)) {
+        // LLM used "— text" bullet format inside sources
+        const text = line.replace(/^[—\-]\s+/, '').trim();
+        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(text)}`;
+        sourcesHtml += `<li><a href="${searchUrl}" target="_blank" rel="noopener">${text}</a></li>`;
       }
+      // Silently skip lines that don't match any pattern (stray punctuation, blank-looking lines)
       continue;
     }
 

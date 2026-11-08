@@ -244,6 +244,7 @@ def run_blog_pipeline(topic: str, audience: str, length: str = "medium") -> dict
     return {
         "topic":      result["topic"],
         "audience":   result["audience"],
+        "length":     result["length"],
         "plan":       result["plan"],
         "draft":      result["draft"],
         "final_blog": result["final_blog"],

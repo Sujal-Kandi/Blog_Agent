@@ -451,14 +451,55 @@ Key Takeaway: [the sentence]
     extras = {"tldr": [], "pull_quote": "", "key_takeaway": ""}
 
     lines = raw.strip().split("\n")
-    for i, line in enumerate(lines):
-        line = line.strip()
-        if line.startswith("- "):
-            extras["tldr"].append(line[2:].strip())
-        elif line.lower().startswith("pull quote:"):
-            extras["pull_quote"] = line.partition(":")[2].strip()
-        elif line.lower().startswith("key takeaway:"):
-            extras["key_takeaway"] = line.partition(":")[2].strip()
+    current_section = None
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        lo = stripped.lower()
+
+        # Detect section headers — LLM sometimes puts content on same line, sometimes next line
+        if lo.startswith("tl;dr") or lo.startswith("tldr"):
+            current_section = "tldr"
+            # Content might be on the same line after the colon
+            after = stripped.partition(":")[2].strip()
+            if after and after.startswith("- "):
+                extras["tldr"].append(after[2:].strip())
+            continue
+
+        if lo.startswith("pull quote"):
+            current_section = "pull_quote"
+            after = stripped.partition(":")[2].strip()
+            if after:
+                extras["pull_quote"] = after.strip('"').strip("'").strip()
+            continue
+
+        if lo.startswith("key takeaway"):
+            current_section = "key_takeaway"
+            after = stripped.partition(":")[2].strip()
+            if after:
+                extras["key_takeaway"] = after.strip('"').strip("'").strip()
+            continue
+
+        # Content lines — assign to current section
+        if current_section == "tldr":
+            if stripped.startswith("- "):
+                extras["tldr"].append(stripped[2:].strip())
+            elif stripped.startswith("* "):
+                extras["tldr"].append(stripped[2:].strip())
+            elif stripped[0].isdigit() and stripped[1] in ".):":
+                extras["tldr"].append(stripped[2:].strip())
+            # If pull quote or key takeaway section starts, current_section changes above
+
+        elif current_section == "pull_quote":
+            if not extras["pull_quote"]:
+                extras["pull_quote"] = stripped.strip('"').strip("'").strip()
+
+        elif current_section == "key_takeaway":
+            if not extras["key_takeaway"]:
+                extras["key_takeaway"] = stripped.strip('"').strip("'").strip()
 
     return extras
 

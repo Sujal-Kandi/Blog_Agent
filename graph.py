@@ -39,8 +39,8 @@ class BlogState(TypedDict):
 
     plan: str
     gap: str            # competitor gap analysis — what existing articles miss
-    research_data: str
-    facts: str
+    research_data: str  # research dossier (structured, for writing engine)
+    facts: str          # raw facts list (for citations — backward compat)
     memory: str
     draft: str
     final_blog: str
@@ -48,8 +48,8 @@ class BlogState(TypedDict):
     extras: dict
     scores: dict
 
-    iteration: int          # how many rewrite iterations so far
-    max_iterations: int     # max allowed rewrites
+    iteration: int
+    max_iterations: int
 
 
 # ── Node wrapper — cancels the whole pipeline on any node failure ─────────────
@@ -77,9 +77,14 @@ def node_plan(state: BlogState) -> BlogState:
     return state
 
 @_guarded
-def node_research(state: BlogState) -> BlogState:
-    state["research_data"] = research(state["topic"])
-    return state
+def node_research(state: BlogState) -> dict:
+    # research() now returns (dossier, raw_facts)
+    # gap is already computed in parallel by node_competitor_gap
+    dossier, raw_facts = research(state["topic"], state.get("gap", ""))
+    return {
+        "research_data": dossier,
+        "facts": raw_facts,
+    }
 
 @_guarded
 def node_competitor_gap(state: BlogState) -> dict:
@@ -87,7 +92,8 @@ def node_competitor_gap(state: BlogState) -> dict:
 
 @_guarded
 def node_extract_facts(state: BlogState) -> BlogState:
-    state["facts"] = extract_facts(state["topic"], state["research_data"])
+    # facts are already built by the research engine — this is a no-op pass-through
+    state["facts"] = extract_facts(state["topic"], state["facts"])
     return state
 
 @_guarded
@@ -105,7 +111,7 @@ def node_write(state: BlogState) -> BlogState:
         memory=state["memory"],
         length=state["length"],
         gap=state.get("gap", ""),
-        facts=state["facts"],
+        facts=state["research_data"],  # dossier is the authoritative source
     )
     state["final_blog"] = state["draft"]
     state["iteration"] = 0
@@ -192,12 +198,11 @@ def build_graph():
 
     g.set_entry_point("planner")
 
-    # research and competitor_gap run in parallel after planner
-    g.add_edge("planner",        "research")
-    g.add_edge("planner",        "competitor_gap")
-
-    # both must complete before extract_facts
-    g.add_edge(["research", "competitor_gap"], "extract_facts")
+    # competitor_gap runs in parallel with planner output
+    # research waits for competitor_gap so it can pass gap into the engine
+    g.add_edge("planner",         "competitor_gap")
+    g.add_edge("competitor_gap",  "research")
+    g.add_edge("research",        "extract_facts")  # no-op pass-through
 
     g.add_edge("extract_facts",   "retrieve_memory")
     g.add_edge("retrieve_memory", "write")

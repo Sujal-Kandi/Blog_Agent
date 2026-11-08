@@ -36,6 +36,7 @@ from langchain_groq import ChatGroq
 from groq import AuthenticationError, RateLimitError
 from tools import web_search
 from langsmith import traceable
+from research_engine import run_research_engine
 
 
 GROQ_KEYS = [
@@ -248,67 +249,28 @@ Be specific. No fluff. This will be used as a writing brief.
 
 
 @traceable(name="research")
-def research(topic: str) -> str:
+def research(topic: str, competitor_gap: str = "") -> tuple[str, str]:
+    """
+    Full 6-phase research engine.
+    Returns (dossier_str, raw_facts_str).
+    dossier_str   — structured evidence dossier for write_blog
+    raw_facts_str — flat facts list for generate_citations
+    """
     _check_cancelled()
-    logger.info(f"[RESEARCH] Starting web search | topic='{topic[:60]}'")
+    logger.info(f"[RESEARCH] Starting research engine | topic='{topic[:60]}'")
     start = time.time()
-    queries = [
-        topic,
-        f"{topic} surprising facts and lesser known insights",
-        f"{topic} recent data statistics research 2024 2025",
-        f"{topic} common misconceptions and expert perspectives"
-    ]
-
-    def fetch(q):
-        _check_cancelled()  # skip fetch entirely if already cancelled
-        result = web_search(q)
-        return f"Query: {q}\n{result}"
-
-    results = []
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = {executor.submit(fetch, q): q for q in queries}
-        for future in as_completed(futures):
-            if _cancel_event.is_set():
-                # Cancel remaining futures and exit early
-                for f in futures:
-                    f.cancel()
-                raise RuntimeError("Pipeline cancelled during research.")
-            try:
-                results.append(future.result())
-            except RuntimeError:
-                raise  # propagate cancellation
-            except Exception as e:
-                logger.warning(f"[RESEARCH] fetch failed: {e}")
-                results.append(f"Query: {futures[future]}\n[fetch failed: {e}]")
-
-    combined = "\n\n".join(results)
-    logger.info(f"[RESEARCH] Done | duration={time.time()-start:.1f}s | chars={len(combined)}")
-    return combined
+    dossier, raw_facts = run_research_engine(topic, competitor_gap, _invoke)
+    logger.info(f"[RESEARCH] Done | duration={time.time()-start:.1f}s")
+    return dossier, raw_facts
 
 
 @traceable(name="extract_facts")
 def extract_facts(topic: str, research_data: str) -> str:
-    _check_cancelled()
-    prompt = f"""
-You are a research analyst. Extract only the most concrete, specific, and useful information.
-
-Topic: {topic}
-
-From the research below, extract:
-- Specific statistics with their source in brackets e.g. "67% of developers use Copilot daily [GitHub Survey 2024]"
-- Named tools, companies, or products that are relevant
-- Real examples of what is actually happening right now
-- Surprising or counterintuitive findings
-- Direct quotes from named experts or studies with attribution e.g. "Quote here" — Name, Title
-- Anything most people don't know about this topic
-
-Every fact MUST have a source in brackets. If no source is available, skip it.
-Return a clean numbered list of concrete facts only.
-
-Research Data:
-{research_data}
-"""
-    return _invoke(prompt, temperature=0.3)
+    """
+    Backward-compatible shim — raw_facts_str is already built by the research engine.
+    This just passes it through so graph.py nodes need minimal changes.
+    """
+    return research_data
 
 
 @traceable(name="write_blog")
@@ -316,7 +278,7 @@ def write_blog(topic: str, audience: str, plan: str, research_data: str, memory:
     _check_cancelled()
     logger.info(f"[WRITE] Starting | topic='{topic[:60]}' | length={length}")
     start = time.time()
-    verified_facts = facts if facts is not None else extract_facts(topic, research_data)
+    verified_facts = facts if facts is not None else research_data
     length_instruction = LENGTH_GUIDE.get(length, LENGTH_GUIDE["medium"])
     gap_section = f"\nContent Gap (what existing articles miss — your blog must address this):\n{gap}\n" if gap else ""
 
@@ -330,11 +292,18 @@ Length: {length_instruction}
 Blog Plan:
 {plan}
 {gap_section}
-Verified Facts (use these — do not invent statistics):
+Research Dossier (your ONLY source of facts — do not use training knowledge for statistics or claims):
 {verified_facts}
 
 Past Context (from memory):
 {memory}
+
+CRITICAL RULES on facts:
+- Use ONLY facts from the Research Dossier above — never invent statistics
+- CONFIRMED FACTS: cite directly and confidently
+- SINGLE-SOURCE FACTS: attribute them — "according to [source name]..."
+- DISPUTED CLAIMS: acknowledge both sides — "some sources suggest... while others report..."
+- If a fact is not in the dossier, do not state it as fact — frame as context or skip it
 
 Rules — non-negotiable:
 
@@ -529,30 +498,29 @@ You are a fact-checker and citations editor.
 
 Topic: {topic}
 
-Below is a blog, the verified facts used to write it, and the raw research data which contains actual URLs.
+Below is a blog, the verified facts used to write it, and the research dossier which contains actual source URLs.
 
 Your job:
-1. Find every statistic, data point, or named claim in the blog that matches a fact
+1. Find every statistic, data point, named claim or quote in the blog
 2. Add an inline citation marker after it like [1], [2] etc.
 3. At the end of the blog, add a "Sources" section listing each citation
 
 Rules:
 - Only cite facts that actually appear in the blog
-- Keep the citation markers minimal and unobtrusive
+- Keep citation markers minimal and unobtrusive — [1] after the fact, not mid-sentence
 - The Sources section format must be EXACTLY:
     [1] Source name — https://actual-url.com
-- EVERY source MUST have a URL. Search the raw research data carefully — every result has a URL field.
-- If you cannot find the exact URL in the research data, construct a Google search URL like:
+- EVERY source MUST have a URL. Search the research dossier carefully — every fact has a source URL.
+- If you cannot find the exact URL, construct a Google search URL:
     https://www.google.com/search?q=source+name+keywords
-  using the source name as the search query. Never leave a source without a URL.
 - Never output a trailing dash with nothing after it
 - Do not change any other part of the blog
 
-Verified Facts with Sources:
+Verified Facts with Source URLs:
 {facts}
 
-Raw Research Data (contains real URLs — use these first):
-{research_data[:6000]}
+Research Dossier (also contains URLs):
+{research_data[:4000]}
 
 Blog:
 {blog}

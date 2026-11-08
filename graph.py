@@ -129,7 +129,7 @@ def node_fix_cliches(state: BlogState) -> BlogState:
 def node_citations(state: BlogState) -> dict[str, str]:
     return {
         "final_blog": generate_citations(
-            state["final_blog"], state["facts"], state["topic"]
+            state["final_blog"], state["facts"], state["topic"], state.get("research_data", "")
         )
     }
 

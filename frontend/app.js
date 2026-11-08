@@ -215,30 +215,24 @@ async function renderBlog(data) {
       // Parse: [1] Source name — URL  or  [1] Source name
       const citMatch = line.match(/^\[(\d+)\]\s+(.+)/);
       if (citMatch) {
-        const num = citMatch[1];
-        const rest = citMatch[2];
-        // Split on " — " or " - " to separate name from URL
-        const dashIdx = rest.search(/\s[—\-]\s/);
-        if (dashIdx !== -1) {
-          const name = rest.slice(0, dashIdx).trim();
-          const url  = rest.slice(dashIdx).replace(/^\s[—\-]\s/, '').trim();
-          const isUrl = url.startsWith('http');
-          sourcesHtml += `<li><span class="src-num">[${num}]</span> ${
-            isUrl
-              ? `<a href="${url}" target="_blank" rel="noopener">${name}</a>`
-              : name
-          }</li>`;
+        const num  = citMatch[1];
+        const rest = citMatch[2].trim();
+        // Match trailing " — https://..." or " - https://..."
+        const urlMatch = rest.match(/^(.+?)\s+[—\-]+\s+(https?:\/\/\S+)$/);
+        if (urlMatch) {
+          const name = urlMatch[1].trim();
+          const url  = urlMatch[2].trim();
+          sourcesHtml += `<li><span class="src-num">[${num}]</span> <a href="${url}" target="_blank" rel="noopener">${name}</a></li>`;
         } else {
-          // No URL — just show the text, check if it IS a raw URL
-          const isUrl = rest.startsWith('http');
-          sourcesHtml += `<li><span class="src-num">[${num}]</span> ${
-            isUrl
-              ? `<a href="${rest}" target="_blank" rel="noopener">${rest}</a>`
-              : rest
-          }</li>`;
+          // Strip any dangling " —" with nothing after it
+          const clean = rest.replace(/\s+[—\-]+\s*$/, '').trim();
+          if (clean.startsWith('http')) {
+            sourcesHtml += `<li><span class="src-num">[${num}]</span> <a href="${clean}" target="_blank" rel="noopener">${clean}</a></li>`;
+          } else {
+            sourcesHtml += `<li><span class="src-num">[${num}]</span> ${clean}</li>`;
+          }
         }
       } else {
-        // Non-numbered line in sources (rare) — show as-is
         sourcesHtml += `<li>${renderInline(line)}</li>`;
       }
       continue;

@@ -463,29 +463,34 @@ Key Takeaway: [the sentence]
     return extras
 
 
-def generate_citations(blog: str, facts: str, topic: str) -> str:
+def generate_citations(blog: str, facts: str, topic: str, research_data: str = "") -> str:
     prompt = f"""
 You are a fact-checker and citations editor.
 
 Topic: {topic}
 
-Below is a blog and the verified facts with sources that were used to write it.
+Below is a blog, the verified facts used to write it, and the raw research data which contains actual URLs.
 
 Your job:
-1. Find every statistic, data point, or named claim in the blog that matches a fact from the list
+1. Find every statistic, data point, or named claim in the blog that matches a fact
 2. Add an inline citation marker after it like [1], [2] etc.
 3. At the end of the blog, add a "Sources" section listing each citation
 
 Rules:
 - Only cite facts that actually appear in the blog
 - Keep the citation markers minimal and unobtrusive
-- The Sources section format must be exactly: [1] Source name — URL
-- If a URL is available in the facts, always include it after a dash
-- If no URL, just the source name is fine
+- The Sources section format must be exactly one of:
+    [1] Source name — https://actual-url.com   (if a real URL exists in the research data)
+    [1] Source name                             (if no URL found)
+- Always search the raw research data below to find the real URL for each source
+- Never output a trailing dash with nothing after it — only include the dash if you have a real URL
 - Do not change any other part of the blog
 
 Verified Facts with Sources:
 {facts}
+
+Raw Research Data (contains real URLs — use these):
+{research_data[:6000]}
 
 Blog:
 {blog}

@@ -416,6 +416,13 @@ function downloadPDF() {
     return (r.top - elementRect.top + window.scrollY) * SCALE;
   }).sort((a, b) => a - b);
 
+  // Build paragraph break positions — bottom edge of every <p> in the blog body
+  // Used to avoid cutting mid-paragraph
+  const paraBreaks = Array.from(element.querySelectorAll('.blog-body p')).map(p => {
+    const r = p.getBoundingClientRect();
+    return (r.bottom - elementRect.top + window.scrollY) * SCALE;
+  }).sort((a, b) => a - b);
+
   // Collect source links BEFORE html2canvas (positions are stable at this point)
   const sourceLinks = [];
   document.querySelectorAll('.blog-sources-list a[href]').forEach(a => {
@@ -453,15 +460,24 @@ function downloadPDF() {
       const proposed = currentY + contentH_px;
       if (proposed >= totalH_px) return totalH_px; // last page
 
-      // Look for any avoid-break element that starts within 80px of
+      // Look for any avoid-break element that starts within 120px of
       // the proposed cut line — nudge the cut up to just before it
-      const LOOKAHEAD = 80 * SCALE;
+      const LOOKAHEAD = 120 * SCALE;
       for (const top of avoidTops) {
         if (top > proposed - LOOKAHEAD && top < proposed + LOOKAHEAD) {
-          // snap cut to just before this element (4px gap)
           return Math.max(currentY + 1, top - 4);
         }
       }
+
+      // Also avoid cutting mid-paragraph — scan back up to 60px to find
+      // the nearest paragraph boundary (approximated as a gap in content)
+      const PARA_SCAN = 60 * SCALE;
+      for (const top of paraBreaks) {
+        if (top <= proposed && top >= proposed - PARA_SCAN) {
+          return Math.max(currentY + 1, top);
+        }
+      }
+
       return proposed;
     }
 

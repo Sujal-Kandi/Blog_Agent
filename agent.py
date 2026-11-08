@@ -498,34 +498,30 @@ You are a fact-checker and citations editor.
 
 Topic: {topic}
 
-Below is a blog, the verified facts used to write it, and the research dossier which contains actual source URLs.
-
 Your job:
 1. Find every statistic, data point, named claim or quote in the blog
 2. Add an inline citation marker after it like [1], [2] etc.
-3. At the end of the blog, add a "Sources" section listing each citation
+3. At the end of the blog, append a "Sources" section
+
+The Sources section format must be EXACTLY like this — one source per line:
+Sources
+[1] Source Title — https://url.com
+[2] Source Title — https://url.com
 
 Rules:
-- Only cite facts that actually appear in the blog
-- Keep citation markers minimal and unobtrusive — [1] after the fact, not mid-sentence
-- The Sources section format must be EXACTLY:
-    [1] Source name — https://actual-url.com
-- EVERY source MUST have a URL. Search the research dossier carefully — every fact has a source URL.
-- If you cannot find the exact URL, construct a Google search URL:
-    https://www.google.com/search?q=source+name+keywords
+- EVERY source must have a URL from the facts list below
+- If no URL exists, use: https://www.google.com/search?q=source+title+keywords
 - Never output a trailing dash with nothing after it
 - Do not change any other part of the blog
+- The word "Sources" must appear alone on its own line with nothing before or after it
 
-Verified Facts with Source URLs:
-{facts}
-
-Research Dossier (also contains URLs):
-{research_data[:4000]}
+Facts with Source URLs (use these URLs):
+{facts[:5000]}
 
 Blog:
 {blog}
 
-Return the full blog with inline citations and Sources section appended at the end.
+Return the full blog with inline citations added, then the Sources section at the very end.
 """
     return _invoke(prompt, temperature=0.0)
 

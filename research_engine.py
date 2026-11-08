@@ -801,51 +801,53 @@ def build_dossier(
 ) -> str:
     """
     Build the final research dossier string for the writing engine.
-    Format mirrors Perplexity's citation-first approach.
+    Each fact includes full context: claim + evidence + source + date.
+    Format is explicit so the writer cannot mix up format/context.
     """
     lines = [f"RESEARCH DOSSIER — {topic}\n"]
 
     # Confirmed facts
     if verified["confirmed"]:
-        lines.append("── CONFIRMED FACTS (cite directly, 2+ independent sources) ──")
+        lines.append("── CONFIRMED FACTS (verified by 2+ independent sources — cite directly) ──")
         for i, c in enumerate(verified["confirmed"], 1):
+            # Include source context explicitly to prevent format/attribution mix-ups
+            source_context = f"{c.source_title}" if c.source_title else "unknown source"
+            date_context = f" ({c.published_date[:4]})" if c.published_date and len(c.published_date) >= 4 else ""
             lines.append(
-                f"{i}. {c.claim}\n"
-                f"   Evidence: {c.evidence[:200]}\n"
-                f"   Source: {c.source_title} — {c.source_url}\n"
-                f"   Date: {c.published_date}"
+                f"FACT-{i}: {c.claim}\n"
+                f"  Context: {c.evidence[:300]}\n"
+                f"  Source: {source_context}{date_context}\n"
+                f"  URL: {c.source_url}\n"
+                f"  Type: {c.claim_type}"
             )
         lines.append("")
 
     # Single-source facts
     if verified["single_source"]:
-        lines.append('── SINGLE-SOURCE FACTS (attribute: "according to [source]...") ──')
+        lines.append('── SINGLE-SOURCE FACTS (attribute as: "according to [Source]...") ──')
         for i, c in enumerate(verified["single_source"], 1):
+            source_context = f"{c.source_title}" if c.source_title else "unknown source"
+            date_context = f" ({c.published_date[:4]})" if c.published_date and len(c.published_date) >= 4 else ""
             lines.append(
-                f"{i}. {c.claim}\n"
-                f"   Source: {c.source_title} — {c.source_url}"
+                f"FACT-{i}: {c.claim}\n"
+                f"  Context: {c.evidence[:200]}\n"
+                f"  Source: {source_context}{date_context}\n"
+                f"  URL: {c.source_url}"
             )
         lines.append("")
 
     # Disputed claims
     if verified["disputed"]:
-        lines.append('── DISPUTED CLAIMS (acknowledge both sides) ──')
+        lines.append('── DISPUTED CLAIMS (write: "some sources suggest X, while others report Y") ──')
         for i, c in enumerate(verified["disputed"], 1):
-            lines.append(f"{i}. {c.claim} [sources disagree — use with caution]")
-        lines.append("")
-
-    # Source URLs
-    all_urls = list({c.source_url for bucket in verified.values() for c in bucket if c.source_url})
-    if all_urls:
-        lines.append("── SOURCE URLs ──")
-        for url in all_urls:
-            lines.append(f"- {url}")
+            lines.append(f"DISPUTED-{i}: {c.claim} [conflicting sources]")
         lines.append("")
 
     # Competitor gap
     if competitor_gap:
-        lines.append("── COMPETITOR GAP (what existing articles miss) ──")
+        lines.append("── COMPETITOR GAP (what existing articles miss — address this angle) ──")
         lines.append(competitor_gap)
+        lines.append("")
 
     return "\n".join(lines)
 
@@ -917,11 +919,14 @@ def run_research_engine(topic: str, competitor_gap: str, invoke_fn) -> tuple[str
     # ── Build Dossier
     dossier = build_dossier(verified, top_sources, competitor_gap, topic)
 
-    # Build flat facts string for generate_citations backward compatibility
+    # Build structured facts list for programmatic citations
+    # Format: claim | source_title | source_url
+    # This is used by generate_citations to build real source links
     all_claims = verified["confirmed"] + verified["single_source"]
     raw_facts = "\n".join(
-        f"{i}. {c.claim} [{c.source_title}] ({c.source_url})"
+        f"[{i}] {c.claim} | {c.source_title} | {c.source_url}"
         for i, c in enumerate(all_claims, 1)
+        if c.source_url  # only include claims that have a real URL
     )
 
     total = time.time() - start

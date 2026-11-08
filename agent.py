@@ -543,37 +543,79 @@ Key Takeaway: [the sentence]
 
 
 def generate_citations(blog: str, facts: str, topic: str, research_data: str = "") -> str:
-    prompt = f"""
-You are a fact-checker and citations editor.
+    """
+    Programmatic citation builder — no LLM, no invented titles.
+    Parses raw_facts (format: [N] claim | source_title | source_url)
+    and builds the Sources section directly from real data.
+    Then adds inline [N] markers to the blog where claims appear.
+    """
+    import re
 
-Topic: {topic}
+    # Parse the structured facts list
+    source_map = {}  # citation_num -> (claim, title, url)
+    for line in facts.strip().split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        # Format: [N] claim | source_title | source_url
+        m = re.match(r'^\[(\d+)\]\s+(.+?)\s+\|\s+(.+?)\s+\|\s+(https?://\S+)', line)
+        if m:
+            num, claim, title, url = m.group(1), m.group(2), m.group(3), m.group(4)
+            source_map[num] = (claim.strip(), title.strip(), url.strip())
 
-Your job:
-1. Find every statistic, data point, named claim or quote in the blog
-2. Add an inline citation marker after it like [1], [2] etc.
-3. At the end of the blog, append a "Sources" section
+    if not source_map:
+        # No structured facts available — return blog as-is with no Sources
+        logger.warning("[CITATIONS] No structured facts found — skipping citations")
+        return blog
 
-The Sources section format must be EXACTLY like this — one source per line:
-Sources
-[1] Source Title — https://url.com
-[2] Source Title — https://url.com
+    # Add inline citation markers to the blog
+    # For each fact, find its key words in the blog and append [N] after the sentence
+    cited_blog = blog
+    used_citations = []
 
-Rules:
-- EVERY source must have a URL from the facts list below
-- If no URL exists, use: https://www.google.com/search?q=source+title+keywords
-- Never output a trailing dash with nothing after it
-- Do not change any other part of the blog
-- The word "Sources" must appear alone on its own line with nothing before or after it
+    for num, (claim, title, url) in source_map.items():
+        # Extract the most distinctive 4-6 word phrase from the claim
+        claim_words = [w for w in claim.lower().split() if len(w) > 3][:5]
+        if not claim_words:
+            continue
 
-Facts with Source URLs (use these URLs):
-{facts[:5000]}
+        # Search for a sentence containing these words
+        pattern = r'([^.!?]*' + re.escape(claim_words[0]) + r'[^.!?]*[.!?])'
+        matches = list(re.finditer(pattern, cited_blog, re.IGNORECASE))
 
-Blog:
-{blog}
+        for match in matches:
+            sentence = match.group(0)
+            # Check if enough claim words appear in this sentence
+            words_found = sum(1 for w in claim_words if w in sentence.lower())
+            if words_found >= min(2, len(claim_words)):
+                # Only add citation if not already cited at this spot
+                marker = f"[{num}]"
+                if marker not in cited_blog[max(0, match.end()-20):match.end()+5]:
+                    # Insert citation before the sentence-ending punctuation
+                    cited_blog = cited_blog[:match.end()-1] + marker + cited_blog[match.end()-1:]
+                    used_citations.append(num)
+                    break  # only cite once per claim
 
-Return the full blog with inline citations added, then the Sources section at the very end.
-"""
-    return _invoke(prompt, temperature=0.0)
+    # Build Sources section from actually used citations
+    # Fall back to all sources if no inline citations were placed
+    citations_to_show = used_citations if used_citations else list(source_map.keys())
+    # Deduplicate while preserving order
+    seen = set()
+    citations_to_show = [n for n in citations_to_show if not (n in seen or seen.add(n))]
+
+    sources_lines = ["Sources"]
+    for num in citations_to_show:
+        if num in source_map:
+            _, title, url = source_map[num]
+            sources_lines.append(f"[{num}] {title} — {url}")
+
+    # Also add any remaining sources that weren't inline-cited
+    for num, (_, title, url) in source_map.items():
+        if num not in seen:
+            sources_lines.append(f"[{num}] {title} — {url}")
+
+    sources_block = "\n".join(sources_lines)
+    return cited_blog.rstrip() + "\n\n" + sources_block
 
 
 @traceable(name="generate_seo")

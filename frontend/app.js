@@ -199,14 +199,26 @@ async function renderBlog(data) {
   let chapterCount = 0;
   let inSources = false;
   let sourcesHtml = '';
+  let bodyLineCount = 0; // track how many body lines we've seen before allowing Sources detection
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     const line = raw.trim();
     if (!line) continue;
 
-    // Detect Sources section — plain text heading from LLM
-    if (/^sources\s*$/i.test(line) || /^##\s*sources\s*$/i.test(line) || /^###\s*sources\s*$/i.test(line)) {
+    // Detect Sources section — plain text, markdown heading, or bold from LLM
+    // Only allow Sources detection after we've seen at least 5 body lines
+    // (prevents false triggers if LLM puts a "Sources:" note early in the blog)
+    if (
+      bodyLineCount >= 5 &&
+      (
+        /^sources\s*$/i.test(line) ||
+        /^##\s*sources\s*$/i.test(line) ||
+        /^###\s*sources\s*$/i.test(line) ||
+        /^\*\*sources\*\*\s*$/i.test(line) ||
+        /^sources\s*:\s*$/i.test(line)
+      )
+    ) {
       inSources = true;
       continue;
     }
@@ -245,6 +257,7 @@ async function renderBlog(data) {
 
     if (h3Match) {
       chapterCount++;
+      bodyLineCount++;
       const chapterNum = String(chapterCount).padStart(2, '0');
       bodyHtml += `
         <div class="blog-chapter">
@@ -253,6 +266,7 @@ async function renderBlog(data) {
         </div>`;
     } else if (h2Match) {
       h2Count++;
+      bodyLineCount++;
       bodyHtml += `<h2 class="blog-section-heading">${renderInline(h2Match[1])}</h2>`;
       if (imageCount < maxImages && h2Count % 2 === 0) {
         const imgUrl = `https://source.unsplash.com/800x400/?${encodeURIComponent(imageKeywords)}&sig=${imageCount}`;
@@ -261,10 +275,12 @@ async function renderBlog(data) {
       }
     } else if (h1Match) {
       h2Count++;
+      bodyLineCount++;
       bodyHtml += `<h2 class="blog-section-heading">${renderInline(h1Match[1])}</h2>`;
     } else if (line.startsWith('---') || line.startsWith('***')) {
       continue;
     } else {
+      bodyLineCount++;
       bodyHtml += `<p>${renderInline(line)}</p>`;
     }
   }
@@ -379,6 +395,19 @@ function downloadPDF() {
     return (r.top - elementRect.top + window.scrollY) * SCALE;
   }).sort((a, b) => a - b);
 
+  // Collect source links BEFORE html2canvas (positions are stable at this point)
+  const sourceLinks = [];
+  document.querySelectorAll('.blog-sources-list a[href]').forEach(a => {
+    const r = a.getBoundingClientRect();
+    sourceLinks.push({
+      url:  a.getAttribute('href'),
+      top:  (r.top  - elementRect.top  + window.scrollY) * SCALE,
+      left: (r.left - elementRect.left) * SCALE,
+      w:    r.width  * SCALE,
+      h:    r.height * SCALE,
+    });
+  });
+
   html2canvas(element, {
     scale: SCALE,
     backgroundColor: '#111111',
@@ -448,6 +477,39 @@ function downloadPDF() {
       );
 
       yOffset = nextY;
+    }
+
+    // Overlay invisible clickable link annotations on top of source links.
+    // We know each link's canvas-pixel position; convert to the correct
+    // page + mm offset and call pdf.link() which adds a hotspot without
+    // touching the image underneath.
+    if (sourceLinks.length > 0) {
+      // Rebuild page boundaries so we know which page each link lands on
+      const pageBoundaries = [];
+      let scanY = 0;
+      while (scanY < totalH_px) {
+        const endY = smartSplitY(scanY);
+        pageBoundaries.push({ start: scanY, end: endY });
+        scanY = endY;
+      }
+
+      sourceLinks.forEach(link => {
+        // Find which page this link's top falls on
+        for (let p = 0; p < pageBoundaries.length; p++) {
+          const { start, end } = pageBoundaries[p];
+          if (link.top >= start && link.top < end) {
+            // Convert canvas-px coords to mm on this page
+            const xMm = link.left  * pxToMm + MARGIN_MM;
+            const yMm = (link.top - start) * pxToMm + MARGIN_MM;
+            const wMm = link.w * pxToMm;
+            const hMm = link.h * pxToMm;
+
+            pdf.setPage(p + 1);
+            pdf.link(xMm, yMm, wMm, hMm, { url: link.url });
+            break;
+          }
+        }
+      });
     }
 
     pdf.save(filename);

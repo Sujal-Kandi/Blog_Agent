@@ -247,7 +247,8 @@ Be specific. No fluff. This will be used as a writing brief.
         return ""
 
 
-
+@traceable(name="research")
+def research(topic: str) -> str:
     _check_cancelled()
     logger.info(f"[RESEARCH] Starting web search | topic='{topic[:60]}'")
     start = time.time()

@@ -15,6 +15,7 @@ from langgraph.graph import StateGraph, END
 from agent import (
     plan_blog,
     research,
+    analyze_competitor_gap,
     extract_facts,
     write_blog,
     critique_and_rewrite,
@@ -37,6 +38,7 @@ class BlogState(TypedDict):
     length: str
 
     plan: str
+    gap: str            # competitor gap analysis — what existing articles miss
     research_data: str
     facts: str
     memory: str
@@ -80,6 +82,10 @@ def node_research(state: BlogState) -> BlogState:
     return state
 
 @_guarded
+def node_competitor_gap(state: BlogState) -> dict:
+    return {"gap": analyze_competitor_gap(state["topic"])}
+
+@_guarded
 def node_extract_facts(state: BlogState) -> BlogState:
     state["facts"] = extract_facts(state["topic"], state["research_data"])
     return state
@@ -98,7 +104,7 @@ def node_write(state: BlogState) -> BlogState:
         research_data=state["research_data"],
         memory=state["memory"],
         length=state["length"],
-        gap="",
+        gap=state.get("gap", ""),
         facts=state["facts"],
     )
     state["final_blog"] = state["draft"]
@@ -173,6 +179,7 @@ def build_graph():
 
     g.add_node("planner",         node_plan)
     g.add_node("research",        node_research)
+    g.add_node("competitor_gap",  node_competitor_gap)
     g.add_node("extract_facts",   node_extract_facts)
     g.add_node("retrieve_memory", node_retrieve_memory)
     g.add_node("write",           node_write)
@@ -185,8 +192,13 @@ def build_graph():
 
     g.set_entry_point("planner")
 
-    g.add_edge("planner",         "research")
-    g.add_edge("research",        "extract_facts")
+    # research and competitor_gap run in parallel after planner
+    g.add_edge("planner",        "research")
+    g.add_edge("planner",        "competitor_gap")
+
+    # both must complete before extract_facts
+    g.add_edge(["research", "competitor_gap"], "extract_facts")
+
     g.add_edge("extract_facts",   "retrieve_memory")
     g.add_edge("retrieve_memory", "write")
     g.add_edge("write",           "critique_rewrite")
@@ -223,6 +235,7 @@ def run_blog_pipeline(topic: str, audience: str, length: str = "medium") -> dict
         "audience":       audience,
         "length":         length,
         "plan":           "",
+        "gap":            "",
         "research_data":  "",
         "facts":          "",
         "memory":         "",

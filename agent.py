@@ -209,8 +209,45 @@ In 2-3 sentences: what angle do most articles on this topic take, and what uniqu
 
 
 
-@traceable(name="research")
-def research(topic: str) -> str:
+@traceable(name="analyze_competitor_gap")
+def analyze_competitor_gap(topic: str) -> str:
+    """
+    Does ONE web search on the topic to see what's already ranking,
+    then asks the LLM to identify the angle every competitor takes
+    and what unique angle would make this blog stand out.
+    Runs in parallel with research — adds zero latency.
+    """
+    _check_cancelled()
+    logger.info(f"[GAP] Starting competitor gap analysis | topic='{topic[:60]}'")
+    start = time.time()
+    try:
+        search_results = web_search(f"{topic} blog article")
+    except Exception as e:
+        logger.warning(f"[GAP] Web search failed: {e} — skipping gap analysis")
+        return ""
+
+    prompt = f"""
+You are a content strategist. I searched "{topic}" and found these results:
+
+{search_results}
+
+In 3 to 4 sentences answer:
+1. What angle do most of these articles take? (be specific)
+2. What important angle, fact, or perspective are they ALL missing?
+3. What would make a new blog on this topic genuinely different and more valuable?
+
+Be specific. No fluff. This will be used as a writing brief.
+"""
+    try:
+        result = _invoke(prompt, temperature=0.3)
+        logger.info(f"[GAP] Done | duration={time.time()-start:.1f}s")
+        return result
+    except Exception as e:
+        logger.warning(f"[GAP] LLM call failed: {e} — skipping gap analysis")
+        return ""
+
+
+
     _check_cancelled()
     logger.info(f"[RESEARCH] Starting web search | topic='{topic[:60]}'")
     start = time.time()

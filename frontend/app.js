@@ -241,7 +241,9 @@ async function renderBlog(data) {
           if (clean.startsWith('http')) {
             sourcesHtml += `<li><span class="src-num">[${num}]</span> <a href="${clean}" target="_blank" rel="noopener">${clean}</a></li>`;
           } else {
-            sourcesHtml += `<li><span class="src-num">[${num}]</span> ${clean}</li>`;
+            // No URL found — fall back to a Google search so it's still clickable
+            const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(clean)}`;
+            sourcesHtml += `<li><span class="src-num">[${num}]</span> <a href="${searchUrl}" target="_blank" rel="noopener">${clean}</a></li>`;
           }
         }
       } else {

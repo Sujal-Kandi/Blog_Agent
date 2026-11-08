@@ -479,17 +479,19 @@ Your job:
 Rules:
 - Only cite facts that actually appear in the blog
 - Keep the citation markers minimal and unobtrusive
-- The Sources section format must be exactly one of:
-    [1] Source name — https://actual-url.com   (if a real URL exists in the research data)
-    [1] Source name                             (if no URL found)
-- Always search the raw research data below to find the real URL for each source
-- Never output a trailing dash with nothing after it — only include the dash if you have a real URL
+- The Sources section format must be EXACTLY:
+    [1] Source name — https://actual-url.com
+- EVERY source MUST have a URL. Search the raw research data carefully — every result has a URL field.
+- If you cannot find the exact URL in the research data, construct a Google search URL like:
+    https://www.google.com/search?q=source+name+keywords
+  using the source name as the search query. Never leave a source without a URL.
+- Never output a trailing dash with nothing after it
 - Do not change any other part of the blog
 
 Verified Facts with Sources:
 {facts}
 
-Raw Research Data (contains real URLs — use these):
+Raw Research Data (contains real URLs — use these first):
 {research_data[:6000]}
 
 Blog:

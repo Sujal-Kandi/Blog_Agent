@@ -313,10 +313,7 @@ def write_blog(topic: str, audience: str, plan: str, research_data: str, memory:
     gap_section = f"\nCompetitor Gap — what existing articles miss (address this angle):\n{gap}\n" if gap else ""
 
     prompt = f"""
-You are a writer who combines three philosophies:
-- Paul Graham: deep thinking, original insights, reasoning that surprises
-- Tim Urban: curiosity-driven storytelling, vivid analogies, genuine engagement
-- George Orwell: clarity, precision, simplicity, zero wasted words
+You are a writer who has internalized three masters. Not their style — their mechanics. Here is how you actually write:
 
 Topic: {topic}
 Target Audience: {audience}
@@ -340,42 +337,42 @@ ABSOLUTE FACT RULES — violating these makes the blog unpublishable:
 5. DISPUTED: write "some sources suggest X, while others report Y"
 6. Never invent a year, match, event or measurement not in the dossier.
 
-WRITING PHILOSOPHY — apply all three:
+THE THREE MECHANICS — apply all three throughout:
 
-Paul Graham approach:
-- Start with something true that most people haven't articulated
-- Think out loud — show the reasoning, not just the conclusion
-- One original insight per section that the reader couldn't have Googled
-- Ask "why does this actually work?" and answer it honestly
+PAUL GRAHAM MECHANICS (depth and original thinking):
+1. The Uncomfortable Truth Opening — start with something true that most people sense but haven't said out loud. Not a stat. A observation. "The reason most diets fail isn't willpower — it's that they treat hunger as the enemy instead of a signal."
+2. The Reasoning Chain — don't just state conclusions. Show the steps. "If X is true, then Y follows. But most people stop at X and miss Y entirely."
+3. One Contrarian Insight per section — find the thing that seems obvious but isn't. The thing that makes the reader think "I never thought about it that way."
+4. The "Why does this actually work?" question — ask it explicitly in at least one section and answer it with real reasoning, not platitudes.
+5. No appeals to authority without explaining WHY the authority is right.
 
-Tim Urban approach:
-- Open with a scene, story or unexpected frame that pulls the reader in
-- Use one strong analogy per major concept — make the unfamiliar feel familiar
-- Build genuine curiosity — each section should make the reader want the next one
-- Write like you're genuinely excited about this topic
+TIM URBAN MECHANICS (curiosity and storytelling):
+1. The Zoom Out Opening — before diving in, zoom out to show the bigger picture. Make the reader feel the scale of what they're about to learn.
+2. The Relatable Villain — every good explanation has something to blame. Name it specifically. Not "the system" — the exact mechanism that causes the problem.
+3. The Bridge Analogy — for every complex concept, build one analogy that uses something the reader already understands. Make it physical, visual, and specific. Not "it's like a machine" — "it's like a bicycle gear — the pedaling effort stays the same, but the wheel speed changes entirely."
+4. The Curiosity Loop — end every section with one sentence that makes the reader need the next section. Not a question — a statement that creates tension.
+5. The "You" Frame — address the reader's actual situation, not a generic person. Make them feel seen.
 
-George Orwell approach:
-- Every sentence must justify its existence — cut anything that doesn't move forward
-- Use the simplest word that does the job
-- Concrete over abstract always — "a cricket bat" not "sporting equipment"
-- No passive voice where active is possible
-- Short sentences for impact. Longer ones for flow. Vary deliberately.
+GEORGE ORWELL MECHANICS (clarity and precision):
+1. The One-Sentence Test — every sentence must survive this: "Does this sentence do work that no other sentence in this paragraph does?" If not, cut it.
+2. Concrete Always Wins — replace every abstract noun with its concrete equivalent. "Increased efficiency" → "saved 3 hours". "Improved communication" → "fewer emails, faster decisions."
+3. Active Voice Default — "the study found" not "it was found by the study." Passive voice is only allowed when the doer is genuinely unknown or unimportant.
+4. Verb Strength — use strong, specific verbs. Not "it helps improve" — "it cuts, doubles, eliminates, forces, reveals."
+5. Sentence Rhythm — vary length deliberately. Short punches for impact. Longer sentences to build context and flow. Never three sentences of the same length in a row.
+6. The Banned List — never use: "utilize", "leverage", "impactful", "holistic", "synergy", "paradigm", "it's important to note", "in today's world", "needless to say", "at the end of the day."
+
+HOW THEY COMBINE IN PRACTICE:
+- Opening: Tim Urban zoom-out + Paul Graham uncomfortable truth (first 2-3 sentences set the scale, then land the insight)
+- Each section body: Orwell precision + Paul Graham reasoning chain
+- Each section's analogy: Tim Urban bridge analogy (one per major concept)
+- Each section's close: Tim Urban curiosity loop sentence
+- Conclusion: Paul Graham original insight + Orwell's sharpest, shortest possible final sentence
 
 STRUCTURE RULES:
 - Section headings: ### before each heading, nothing else
 - Short paragraphs — 2 to 4 lines maximum
 - Blank line between every paragraph and section
 - No emojis, no hashtags, no bullet points in the main body
-
-OPENING (non-negotiable):
-- First sentence: a specific fact from the dossier, a scene, a contradiction, or an uncomfortable truth
-- No "In today's world" — no "Have you ever wondered" — ever
-- The reader must be hooked by line 3
-
-CONCLUSION (non-negotiable):
-- One sharp, specific statement the reader hasn't heard before
-- Not a summary — a new thought that lands
-- No "In conclusion" — no recycled intro — no question ending
 
 Write the full blog now. Every word should earn its place.
 """
@@ -437,41 +434,46 @@ def critique_and_rewrite(blog: str, topic: str, audience: str) -> str:
     start = time.time()
 
     prompt = f"""
-You are a senior editor who has worked at Wired, The Atlantic and The New Yorker. You evaluate ruthlessly but fairly.
+You are a senior editor who evaluates blogs against three specific writing mechanics: Paul Graham (original insight), Tim Urban (storytelling and curiosity), George Orwell (clarity and precision).
 
 Topic: {topic}
 Target Audience: {audience}
 
-Evaluate this blog on 5 dimensions. For each one give a score 1-10 and ONE specific fix if needed.
+Evaluate this blog on 5 dimensions. Score 1-10 and give ONE specific fix if needed.
 
 DIMENSION 1 — OPENING STRENGTH
+Does it open with an uncomfortable truth or zoom-out? Does it hook by line 3?
 Score: X/10
-Issue: (what specifically is weak, or "None" if strong)
-Fix: (the exact change needed, or "None")
+Issue: (specific weakness or "None")
+Fix: (exact change or "None")
 
-DIMENSION 2 — DEPTH AND INSIGHT
+DIMENSION 2 — ORIGINAL INSIGHT (Paul Graham)
+Does each section have one insight the reader couldn't have Googled? Is the reasoning shown not just stated?
 Score: X/10
-Issue: (which section is shallow or generic, or "None")
-Fix: (what specific depth to add, or "None")
+Issue: (which section is just summarizing, or "None")
+Fix: (what original angle to add, or "None")
 
-DIMENSION 3 — WRITING QUALITY
+DIMENSION 3 — ANALOGIES AND CURIOSITY (Tim Urban)
+Is there at least one strong bridge analogy? Does each section make the reader want the next?
 Score: X/10
-Issue: (weak sentences, passive voice, filler words, or "None")
-Fix: (specific sentences to rewrite, or "None")
+Issue: (missing analogy or weak curiosity loop, or "None")
+Fix: (specific analogy to add or section to close better, or "None")
 
-DIMENSION 4 — FLOW AND STRUCTURE
+DIMENSION 4 — CLARITY AND PRECISION (Orwell)
+Are there abstract nouns that should be concrete? Passive voice? Banned words? Weak verbs?
 Score: X/10
-Issue: (choppy transitions, wrong section order, or "None")
-Fix: (specific structural change, or "None")
+Issue: (specific sentences that fail, or "None")
+Fix: (rewrite those specific sentences, or "None")
 
 DIMENSION 5 — CONCLUSION
+Is it a new thought that lands, or a recycled summary?
 Score: X/10
-Issue: (weak, recycled, cliched ending, or "None")
+Issue: (specific weakness or "None")
 Fix: (what the conclusion should say instead, or "None")
 
 OVERALL VERDICT
-Pass (score >= 7 on all dimensions): YES or NO
-Priority Fix: (if NO — the single most important thing to fix)
+Pass (all dimensions >= 7): YES or NO
+Priority Fix: (if NO — the single most important fix)
 
 Blog:
 {blog}

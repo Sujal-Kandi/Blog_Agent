@@ -178,34 +178,60 @@ Blog:
     return _invoke(prompt, temperature=0.5)
 
 
-@traceable(name="plan_blog")
+@traceable(name="writing_strategy_planner")
 def plan_blog(topic: str, audience: str) -> str:
+    """
+    Elite Writing Strategy Planner.
+    Detects topic type, decides writing approach, builds full strategy brief.
+    Strategy is embedded directly into the writer — zero extra latency.
+    """
     _check_cancelled()
-    logger.info(f"[PLAN] Starting | topic='{topic[:60]}' | audience='{audience[:40]}'")
+    logger.info(f"[STRATEGY] Starting | topic='{topic[:60]}' | audience='{audience[:40]}'")
     start = time.time()
+
     result = _invoke(f"""
-You are a blog strategist and content analyst.
+You are an elite content strategist. Your strategy brief will be used directly by the writer — make it specific, actionable and tight.
 
 Topic: {topic}
 Target Audience: {audience}
 
-Do two things in one response:
+STEP 1 — TOPIC INTELLIGENCE
+Topic Type: (one of) Technical | Sports | Educational | Historical | Analytical | Review | Opinion | Science | Health | Business
+Core Question: The single most important question this blog must answer.
+Reader Pain Point: What does the reader actually want to understand or solve?
+Unique Angle: What do most articles on this topic miss? What makes this one different?
 
-OUTLINE:
-1. Title — specific, curiosity-driven, honest.
-2. Opening hook — specific tension, surprising fact, or uncomfortable truth.
-3. 4 to 6 section headings — each with a one-line description.
-4. Core argument — the single most important takeaway.
-5. Conclusion angle — challenge, reframe, call to action, or hard truth.
-Recommended Length: one word — short / medium / long
+STEP 2 — WRITING APPROACH
+Based on topic type choose the right style:
+- Technical: concrete problem first, precise examples, build step by step
+- Sports: specific moment first, data supports story, vivid and grounded
+- Educational: start simple go deep, analogies, teach progressively
+- Historical: set the scene, narrative arc, connect past to present
+- Analytical: bold thesis, evidence-backed, challenge assumptions
+- Review: honest upfront, fair evaluation, clear verdict
+- Opinion: clear stance, acknowledge counterarguments, defend with evidence
+- Science/Health: human relevance first, translate complexity, cite evidence
+- Business: cost or opportunity first, real numbers, actionable
 
-COMPETITOR GAP:
-In 2-3 sentences: what angle do most articles on this topic take, and what unique angle would make this blog stand out?
+Writing Style: (name the style)
+Why this fits: (one sentence)
+
+STEP 3 — STRUCTURE
+Opening Hook: (specific — a scene, stat, contradiction or uncomfortable truth for THIS topic)
+Sections: (5-7 headings, each with one line on what it must prove)
+Core Argument: (the single insight the reader leaves with)
+Conclusion: (how to land it — challenge, reframe, hard truth or memorable final thought)
+
+STEP 4 — TONE AND VOICE
+Tone: (e.g. analytical-urgent / warm-curious / direct-challenging)
+Voice: (e.g. expert coach / investigative journalist / thoughtful teacher)
+Avoid: (topic-specific clichés and shallow takes to avoid)
+
+Be specific. Generic strategy produces generic blogs.
 """, temperature=0.3)
-    logger.info(f"[PLAN] Done | duration={time.time()-start:.1f}s")
-    return result
 
-#plan_blog traceble - this decorator sends the functions inpu/ouptut to LangSmith automatically Calls _invoke with a prompt asking for a blog outline + competitor gap analysis . Return a string with the plan .
+    logger.info(f"[STRATEGY] Done | duration={time.time()-start:.1f}s")
+    return result
 
 
 
@@ -273,80 +299,88 @@ def extract_facts(topic: str, research_data: str) -> str:
     return research_data
 
 
-@traceable(name="write_blog")
+@traceable(name="unified_writer")
 def write_blog(topic: str, audience: str, plan: str, research_data: str, memory: str, length: str = "medium", gap: str = "", facts: str | None = None) -> str:
+    """
+    Unified Writer — Paul Graham + Tim Urban + George Orwell combined.
+    Adaptive by topic type. Hard-enforced dossier-only facts.
+    """
     _check_cancelled()
-    logger.info(f"[WRITE] Starting | topic='{topic[:60]}' | length={length}")
+    logger.info(f"[WRITER] Starting | topic='{topic[:60]}' | length={length}")
     start = time.time()
     verified_facts = facts if facts is not None else research_data
     length_instruction = LENGTH_GUIDE.get(length, LENGTH_GUIDE["medium"])
-    gap_section = f"\nContent Gap (what existing articles miss — your blog must address this):\n{gap}\n" if gap else ""
+    gap_section = f"\nCompetitor Gap — what existing articles miss (address this angle):\n{gap}\n" if gap else ""
 
     prompt = f"""
-You are a writer who has contributed to The Atlantic, Wired, Harvard Business Review, and Vox. You write for humans, not algorithms.
+You are a writer who combines three philosophies:
+- Paul Graham: deep thinking, original insights, reasoning that surprises
+- Tim Urban: curiosity-driven storytelling, vivid analogies, genuine engagement
+- George Orwell: clarity, precision, simplicity, zero wasted words
 
 Topic: {topic}
 Target Audience: {audience}
 Length: {length_instruction}
 
-Blog Plan:
+WRITING STRATEGY (follow this exactly):
 {plan}
 {gap_section}
 
-════════════════════════════════════════
-RESEARCH DOSSIER — YOUR ONLY FACT SOURCE
-════════════════════════════════════════
+RESEARCH DOSSIER — YOUR ONLY SOURCE OF FACTS:
 {verified_facts}
-════════════════════════════════════════
 
-Past Context (from memory):
+PAST CONTEXT (from memory):
 {memory}
 
-══════════════════════════════════════════════════
-ABSOLUTE RULES — FACTS (violating these is a failure)
-══════════════════════════════════════════════════
-1. Every number, percentage, statistic, or named measurement in your blog MUST appear word-for-word in the Research Dossier above.
-2. If a number is NOT in the dossier — do NOT write it. Not even a plausible-sounding estimate.
-3. Do not use your training knowledge for any factual claim. The dossier is the only truth.
-4. CONFIRMED FACTS in the dossier: state them directly and confidently.
-5. SINGLE-SOURCE FACTS: attribute them — "according to [source name]..."
-6. DISPUTED CLAIMS: write "some analysts suggest X, while others report Y"
-7. If the dossier has no numbers for a section — write the insight without numbers. Strong analysis does not require invented statistics.
-8. Never write a specific year, match, or event unless it is explicitly named in the dossier.
-══════════════════════════════════════════════════
+ABSOLUTE FACT RULES — violating these makes the blog unpublishable:
+1. Every number, percentage, statistic in your blog MUST exist word-for-word in the dossier above.
+2. If a number is NOT in the dossier — do not write it. Write the insight without the number instead.
+3. CONFIRMED FACTS: state directly and confidently.
+4. SINGLE-SOURCE FACTS: attribute — "according to [source name]..."
+5. DISPUTED: write "some sources suggest X, while others report Y"
+6. Never invent a year, match, event or measurement not in the dossier.
 
-Writing rules — non-negotiable:
+WRITING PHILOSOPHY — apply all three:
 
-Opening:
-- First sentence must be specific. Use a real stat from the dossier, a contradiction, a scene, or a hard truth.
-- No "In today's world..." or "Have you ever wondered..." ever.
-- Talk directly to the reader's exact situation.
+Paul Graham approach:
+- Start with something true that most people haven't articulated
+- Think out loud — show the reasoning, not just the conclusion
+- One original insight per section that the reader couldn't have Googled
+- Ask "why does this actually work?" and answer it honestly
 
-Body:
-- Every section makes one distinct point. No filler sections.
-- After every stat or fact, explain what it means for the reader.
-- At least one strong analogy that makes something complex feel simple.
-- Short paragraphs — 2 to 4 lines. White space matters.
-- Section headings: use ### before each heading. Nothing else — no ##, no bold, no emojis.
-- Natural transitions — each section flows into the next.
+Tim Urban approach:
+- Open with a scene, story or unexpected frame that pulls the reader in
+- Use one strong analogy per major concept — make the unfamiliar feel familiar
+- Build genuine curiosity — each section should make the reader want the next one
+- Write like you're genuinely excited about this topic
 
-Tone:
-- Match tone to topic and audience.
-- Direct. Cut anything that doesn't move the reader forward.
-- No corporate speak: "leverage", "synergy", "revolutionize" — banned.
-- Smart friend explaining something, not a content marketer.
+George Orwell approach:
+- Every sentence must justify its existence — cut anything that doesn't move forward
+- Use the simplest word that does the job
+- Concrete over abstract always — "a cricket bat" not "sporting equipment"
+- No passive voice where active is possible
+- Short sentences for impact. Longer ones for flow. Vary deliberately.
 
-Conclusion:
-- One sharp, specific statement the reader hasn't heard before.
-- No "In conclusion..." No recycling the intro.
-- No clichés. No question endings. End with a statement that lands.
+STRUCTURE RULES:
+- Section headings: ### before each heading, nothing else
+- Short paragraphs — 2 to 4 lines maximum
+- Blank line between every paragraph and section
+- No emojis, no hashtags, no bullet points in the main body
 
-No hashtags or emojis. Blank line between sections.
+OPENING (non-negotiable):
+- First sentence: a specific fact from the dossier, a scene, a contradiction, or an uncomfortable truth
+- No "In today's world" — no "Have you ever wondered" — ever
+- The reader must be hooked by line 3
 
-Write the full blog now. Remember: every number must come from the dossier.
+CONCLUSION (non-negotiable):
+- One sharp, specific statement the reader hasn't heard before
+- Not a summary — a new thought that lands
+- No "In conclusion" — no recycled intro — no question ending
+
+Write the full blog now. Every word should earn its place.
 """
-    result = _invoke(prompt, temperature=0.6)
-    logger.info(f"[WRITE] Done | duration={time.time()-start:.1f}s | words={len(result.split())}")
+    result = _invoke(prompt, temperature=0.65)
+    logger.info(f"[WRITER] Done | duration={time.time()-start:.1f}s | words={len(result.split())}")
     return result
 
 
@@ -391,44 +425,97 @@ Return the full corrected blog. No commentary, no explanation — just the blog.
     return result
 
 
-@traceable(name="critique_and_rewrite")
+@traceable(name="editorial_critic")
 def critique_and_rewrite(blog: str, topic: str, audience: str) -> str:
+    """
+    Editorial Critic — evaluates the blog and returns a structured critique.
+    Does NOT rewrite. Quality Router reads this output to decide if revision needed.
+    If revision needed, targeted_revision fixes only the flagged issues.
+    """
     _check_cancelled()
-    logger.info(f"[CRITIQUE] Starting rewrite | topic='{topic[:60]}'")
+    logger.info(f"[CRITIC] Starting | topic='{topic[:60]}'")
     start = time.time()
+
     prompt = f"""
-You are a senior editor from Wired and The Atlantic. Ruthless about quality.
+You are a senior editor who has worked at Wired, The Atlantic and The New Yorker. You evaluate ruthlessly but fairly.
 
 Topic: {topic}
 Target Audience: {audience}
 
-Rewrite this blog as the final published version. Fix:
-- Weak or generic opening — replace with something that grabs immediately
-- Any stat dropped without explanation — add the "so what"
-- Any cliché — cut it, replace with something specific
-- Any filler section — make it earn its place or cut it
-- Weak conclusion — one sharp, memorable final thought
-- Choppy transitions — smooth them
+Evaluate this blog on 5 dimensions. For each one give a score 1-10 and ONE specific fix if needed.
 
-Check:
-- At least one strong analogy?
-- Every paragraph moves the reader forward?
-- Conclusion leaves the reader with something new?
+DIMENSION 1 — OPENING STRENGTH
+Score: X/10
+Issue: (what specifically is weak, or "None" if strong)
+Fix: (the exact change needed, or "None")
 
-Rules:
-- No emojis
-- Section headings must use ### prefix — nothing else
-- Short paragraphs, blank line between sections
-- No clichés: "journey not a destination", "unlock potential", "game changer" — banned
-- Write like a smart human, not a content farm
+DIMENSION 2 — DEPTH AND INSIGHT
+Score: X/10
+Issue: (which section is shallow or generic, or "None")
+Fix: (what specific depth to add, or "None")
 
-Return only the final blog. No commentary.
+DIMENSION 3 — WRITING QUALITY
+Score: X/10
+Issue: (weak sentences, passive voice, filler words, or "None")
+Fix: (specific sentences to rewrite, or "None")
+
+DIMENSION 4 — FLOW AND STRUCTURE
+Score: X/10
+Issue: (choppy transitions, wrong section order, or "None")
+Fix: (specific structural change, or "None")
+
+DIMENSION 5 — CONCLUSION
+Score: X/10
+Issue: (weak, recycled, cliched ending, or "None")
+Fix: (what the conclusion should say instead, or "None")
+
+OVERALL VERDICT
+Pass (score >= 7 on all dimensions): YES or NO
+Priority Fix: (if NO — the single most important thing to fix)
+
+Blog:
+{blog}
+"""
+    result = _invoke(prompt, temperature=0.2)
+    logger.info(f"[CRITIC] Done | duration={time.time()-start:.1f}s")
+    return result
+
+
+@traceable(name="targeted_revision")
+def targeted_revision(blog: str, critique: str, topic: str, audience: str) -> str:
+    """
+    Targeted Revision — fixes ONLY the issues flagged by the Editorial Critic.
+    Does not rewrite the whole blog. Surgical and fast.
+    """
+    _check_cancelled()
+    logger.info(f"[REVISION] Starting targeted revision | topic='{topic[:60]}'")
+    start = time.time()
+
+    prompt = f"""
+You are a precise editor. You fix only what is broken — nothing else.
+
+Topic: {topic}
+Target Audience: {audience}
+
+EDITORIAL CRITIQUE (fix only what is flagged here):
+{critique}
+
+RULES:
+- Fix ONLY the specific issues listed in the critique above
+- Do NOT rewrite sections that scored 7 or above
+- Do NOT change the structure unless the critique explicitly flags it
+- Do NOT change facts, numbers or citations
+- Keep the same voice, tone and style throughout
+- Section headings must stay as ### prefix
+- If the critique says "None" for an issue — leave that section completely untouched
+
+Return the full revised blog. No commentary.
 
 Original Blog:
 {blog}
 """
-    result = _invoke(prompt, temperature=0.6)
-    logger.info(f"[CRITIQUE] Done | duration={time.time()-start:.1f}s | words={len(result.split())}")
+    result = _invoke(prompt, temperature=0.5)
+    logger.info(f"[REVISION] Done | duration={time.time()-start:.1f}s | words={len(result.split())}")
     return result
 def score_blog(blog: str, topic: str, seo: dict) -> dict:
     prompt = f"""

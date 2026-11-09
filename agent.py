@@ -303,7 +303,7 @@ def extract_facts(topic: str, research_data: str) -> str:
 def write_blog(topic: str, audience: str, plan: str, research_data: str, memory: str, length: str = "medium", gap: str = "", facts: str | None = None) -> str:
     """
     Unified Writer — Paul Graham + Tim Urban + George Orwell combined.
-    Adaptive by topic type. Hard-enforced dossier-only facts.
+    Adaptive by topic type — reading topic type from Strategy Planner output.
     """
     _check_cancelled()
     logger.info(f"[WRITER] Starting | topic='{topic[:60]}' | length={length}")
@@ -312,8 +312,34 @@ def write_blog(topic: str, audience: str, plan: str, research_data: str, memory:
     length_instruction = LENGTH_GUIDE.get(length, LENGTH_GUIDE["medium"])
     gap_section = f"\nCompetitor Gap — what existing articles miss (address this angle):\n{gap}\n" if gap else ""
 
+    # Extract topic type from strategy plan for adaptive mechanic weighting
+    import re as _re
+    topic_type_match = _re.search(r'topic type[:\s]+([A-Za-z]+)', plan, _re.IGNORECASE)
+    topic_type = topic_type_match.group(1).strip().lower() if topic_type_match else "general"
+
+    # Adaptive mechanic weights per topic type
+    MECHANIC_WEIGHTS = {
+        "sports":      ("Tim Urban — storytelling and vivid moments first", "Orwell — precision and concrete details", "Graham — one surprising insight per section"),
+        "technical":   ("Graham — reasoning chain and why it works", "Orwell — clarity, concrete, active voice", "Urban — one strong analogy per concept"),
+        "educational": ("Urban — curiosity, zoom out, progressive build", "Orwell — simplest word, concrete examples", "Graham — one insight the textbook misses"),
+        "historical":  ("Urban — narrative arc, scene-setting, scale", "Graham — connect past to present with an original insight", "Orwell — precise, no filler"),
+        "analytical":  ("Graham — contrarian insight, show the reasoning chain", "Orwell — concrete evidence, strong verbs", "Urban — one analogy to make the argument land"),
+        "opinion":     ("Graham — uncomfortable truth, defend with reasoning", "Orwell — precise, no wasted words, active voice", "Urban — relatable frame and villain"),
+        "science":     ("Urban — human relevance first, bridge analogies", "Orwell — translate complexity into concrete clarity", "Graham — why does this actually work?"),
+        "health":      ("Urban — human relevance first, bridge analogies", "Orwell — translate complexity into concrete clarity", "Graham — why does this actually work?"),
+        "business":    ("Graham — original insight, cost or opportunity framing", "Orwell — real numbers, active voice, no jargon", "Urban — relatable villain, reader frame"),
+        "review":      ("Orwell — honest, concrete, clear verdict upfront", "Graham — reasoning behind the verdict", "Urban — reader's actual situation frame"),
+    }
+
+    weights = MECHANIC_WEIGHTS.get(topic_type, (
+        "Graham — original insight and reasoning",
+        "Urban — curiosity and one strong analogy",
+        "Orwell — clarity and concrete language"
+    ))
+    primary, secondary, light = weights
+
     prompt = f"""
-You are a writer who has internalized three masters. Not their style — their mechanics. Here is how you actually write:
+You are a writer who has internalized three masters. You apply them adaptively — different topics demand different emphases.
 
 Topic: {topic}
 Target Audience: {audience}
@@ -337,36 +363,41 @@ ABSOLUTE FACT RULES — violating these makes the blog unpublishable:
 5. DISPUTED: write "some sources suggest X, while others report Y"
 6. Never invent a year, match, event or measurement not in the dossier.
 
-THE THREE MECHANICS — apply all three throughout:
+ADAPTIVE MECHANIC EMPHASIS FOR THIS TOPIC ({topic_type.upper()}):
+Primary (lead with this): {primary}
+Secondary (support with this): {secondary}
+Light use (one or two moments): {light}
 
-PAUL GRAHAM MECHANICS (depth and original thinking):
-1. The Uncomfortable Truth Opening — start with something true that most people sense but haven't said out loud. Not a stat. A observation. "The reason most diets fail isn't willpower — it's that they treat hunger as the enemy instead of a signal."
-2. The Reasoning Chain — don't just state conclusions. Show the steps. "If X is true, then Y follows. But most people stop at X and miss Y entirely."
-3. One Contrarian Insight per section — find the thing that seems obvious but isn't. The thing that makes the reader think "I never thought about it that way."
-4. The "Why does this actually work?" question — ask it explicitly in at least one section and answer it with real reasoning, not platitudes.
-5. No appeals to authority without explaining WHY the authority is right.
+THE THREE MECHANICS — full toolkit:
 
-TIM URBAN MECHANICS (curiosity and storytelling):
-1. The Zoom Out Opening — before diving in, zoom out to show the bigger picture. Make the reader feel the scale of what they're about to learn.
-2. The Relatable Villain — every good explanation has something to blame. Name it specifically. Not "the system" — the exact mechanism that causes the problem.
-3. The Bridge Analogy — for every complex concept, build one analogy that uses something the reader already understands. Make it physical, visual, and specific. Not "it's like a machine" — "it's like a bicycle gear — the pedaling effort stays the same, but the wheel speed changes entirely."
-4. The Curiosity Loop — end every section with one sentence that makes the reader need the next section. Not a question — a statement that creates tension.
-5. The "You" Frame — address the reader's actual situation, not a generic person. Make them feel seen.
+PAUL GRAHAM MECHANICS:
+1. Uncomfortable Truth Opening — something true that most people sense but haven't said out loud
+2. Reasoning Chain — show the steps, not just the conclusion. "If X is true, then Y follows. But most people stop at X."
+3. Contrarian Insight — the thing that seems obvious but isn't. Makes the reader think "I never thought about it that way."
+4. The "Why does this actually work?" question — ask it and answer it with real reasoning, not platitudes
+5. No authority without explanation — never cite someone without explaining WHY they're right
 
-GEORGE ORWELL MECHANICS (clarity and precision):
-1. The One-Sentence Test — every sentence must survive this: "Does this sentence do work that no other sentence in this paragraph does?" If not, cut it.
-2. Concrete Always Wins — replace every abstract noun with its concrete equivalent. "Increased efficiency" → "saved 3 hours". "Improved communication" → "fewer emails, faster decisions."
-3. Active Voice Default — "the study found" not "it was found by the study." Passive voice is only allowed when the doer is genuinely unknown or unimportant.
-4. Verb Strength — use strong, specific verbs. Not "it helps improve" — "it cuts, doubles, eliminates, forces, reveals."
-5. Sentence Rhythm — vary length deliberately. Short punches for impact. Longer sentences to build context and flow. Never three sentences of the same length in a row.
-6. The Banned List — never use: "utilize", "leverage", "impactful", "holistic", "synergy", "paradigm", "it's important to note", "in today's world", "needless to say", "at the end of the day."
+TIM URBAN MECHANICS:
+1. Zoom Out Opening — show the scale of what the reader is about to understand before diving in
+2. Relatable Villain — name the exact mechanism causing the problem, not "the system" or "society"
+3. Bridge Analogy — one per major concept. Physical, visual, specific. Not "it's like a machine" — "it's like a bicycle gear: same pedaling, completely different speed."
+4. Curiosity Loop — end every section with a statement that creates tension and pulls toward the next
+5. The "You" Frame — address the reader's actual situation, not a generic person
 
-HOW THEY COMBINE IN PRACTICE:
-- Opening: Tim Urban zoom-out + Paul Graham uncomfortable truth (first 2-3 sentences set the scale, then land the insight)
-- Each section body: Orwell precision + Paul Graham reasoning chain
-- Each section's analogy: Tim Urban bridge analogy (one per major concept)
-- Each section's close: Tim Urban curiosity loop sentence
-- Conclusion: Paul Graham original insight + Orwell's sharpest, shortest possible final sentence
+GEORGE ORWELL MECHANICS:
+1. One-Sentence Test — every sentence must do work no other sentence does. Cut anything that doesn't.
+2. Concrete over Abstract — "saved 3 hours" not "increased efficiency". "fewer emails" not "improved communication"
+3. Active Voice — "the study found" not "it was found". Passive only when doer is genuinely unknown
+4. Strong Verbs — cuts, doubles, eliminates, forces, reveals. Not "helps improve" or "can be used to"
+5. Sentence Rhythm — short for impact. Longer for flow. Never three of the same length in a row.
+6. Banned words — never use: utilize, leverage, impactful, holistic, synergy, paradigm, "it's important to note", "in today's world", "needless to say", "at the end of the day", "game changer"
+
+HOW THEY COMBINE (regardless of emphasis):
+- Opening: zoom out to show scale (Urban) + land the uncomfortable truth (Graham) — first 2-3 sentences
+- Each section body: reasoning chain (Graham) + concrete precision (Orwell)
+- Each section's analogy: one bridge analogy (Urban) — one per major concept minimum
+- Each section's close: curiosity loop sentence (Urban)
+- Conclusion: one original insight (Graham) + sharpest possible final sentence (Orwell)
 
 STRUCTURE RULES:
 - Section headings: ### before each heading, nothing else
@@ -374,8 +405,11 @@ STRUCTURE RULES:
 - Blank line between every paragraph and section
 - No emojis, no hashtags, no bullet points in the main body
 
-Write the full blog now. Every word should earn its place.
+Write the full blog now. Lead with {primary.split('—')[0].strip()}. Every word earns its place.
 """
+    result = _invoke(prompt, temperature=0.65)
+    logger.info(f"[WRITER] Done | topic_type={topic_type} | duration={time.time()-start:.1f}s | words={len(result.split())}")
+    return result
     result = _invoke(prompt, temperature=0.65)
     logger.info(f"[WRITER] Done | duration={time.time()-start:.1f}s | words={len(result.split())}")
     return result

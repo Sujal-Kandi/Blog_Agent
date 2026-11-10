@@ -420,48 +420,106 @@ Write the full blog now. Lead with {primary.split('—')[0].strip()}. Every word
 @traceable(name="audit_facts")
 def audit_facts(blog: str, dossier: str, topic: str) -> str:
     """
-    Post-write fact audit — finds every number/statistic in the blog,
-    checks if it exists in the dossier, removes or replaces hallucinated ones.
-    Runs between write and critique_rewrite.
+    Surgical fact audit — Python-first, LLM-second.
 
-    Both blog and dossier are capped before sending to stay within TPM limits.
+    Step 1 (Python): Extract every specific number from the blog and check
+    if that number appears anywhere in the dossier. If ALL numbers are
+    verified, skip the LLM call entirely (saves ~45s per blog).
+
+    Step 2 (LLM, only if unverified numbers exist): Send ONLY the sentences
+    containing unverified numbers, ask LLM to rephrase just those sentences.
+    Never touch the rest of the blog.
+
+    Design principle: narrative, analysis, and opinion are never touched.
+    Only falsifiable specific numbers can be acted on.
     """
+    import re as _re
     _check_cancelled()
     logger.info(f"[AUDIT] Starting fact audit | topic='{topic[:60]}'")
     start = time.time()
 
-    # Cap inputs to avoid 413 — blog capped at 6 000 chars, dossier at 4 000
-    blog_input    = blog[:6_000]
-    dossier_input = dossier[:4_000]
+    # ── Step 1: Python number scan ────────────────────────────────────────────
+    # Find all specific numbers in the blog (integers and decimals)
+    number_pattern = _re.compile(r'\b\d[\d,]*(?:\.\d+)?(?:\s*%|\s*(?:runs|wickets|matches|years|km|mph|kmh|km/h|lbs|kg|crore|million|billion|goals|titles|trophies))?\b')
+    all_numbers = number_pattern.findall(blog)
+    # Normalize: strip commas, lowercase
+    all_numbers_clean = [n.replace(",", "").strip() for n in all_numbers]
+
+    if not all_numbers_clean:
+        logger.info(f"[AUDIT] No specific numbers found — skipping | duration={time.time()-start:.1f}s")
+        return blog
+
+    dossier_lower = dossier.lower()
+    unverified = []
+    for num in all_numbers_clean:
+        # Check if the raw number appears anywhere in the dossier
+        if num.lower() not in dossier_lower:
+            unverified.append(num)
+
+    # Deduplicate
+    unverified = list(dict.fromkeys(unverified))
+
+    if not unverified:
+        logger.info(
+            f"[AUDIT] All {len(all_numbers_clean)} numbers verified against dossier — "
+            f"no LLM call needed | duration={time.time()-start:.1f}s"
+        )
+        return blog
+
+    logger.info(f"[AUDIT] Found {len(unverified)} unverified numbers: {unverified[:10]}")
+
+    # ── Step 2: LLM surgical fix — only unverified numbers ───────────────────
+    # Extract ONLY the sentences containing those unverified numbers
+    sentences_to_fix = []
+    for sentence in _re.split(r'(?<=[.!?])\s+', blog):
+        for num in unverified:
+            if num in sentence.replace(",", ""):
+                sentences_to_fix.append(sentence.strip())
+                break
+
+    if not sentences_to_fix:
+        return blog
+
+    # Deduplicate sentences
+    sentences_to_fix = list(dict.fromkeys(sentences_to_fix))
+    sentences_block = "\n".join(f"- {s}" for s in sentences_to_fix[:15])  # cap at 15
 
     prompt = f"""
-You are a fact auditor. Your job is to find and fix hallucinated statistics in a blog.
+You are a surgical editor. Remove ONLY the unverified numbers from these specific sentences.
 
 Topic: {topic}
+Unverified numbers to remove: {unverified}
 
-VERIFIED DOSSIER (the only allowed source of facts):
-{dossier_input}
+Sentences to fix:
+{sentences_block}
 
-BLOG TO AUDIT:
-{blog_input}
+For each sentence:
+- Remove just the number/statistic that is in the unverified list
+- Keep the rest of the sentence intact and natural
+- Do NOT add any new facts
+- Return: original sentence → fixed sentence (one per line)
 
-Your task:
-1. Find every specific number, percentage, statistic, measurement, or named data point in the blog.
-2. For each one — check if it exists in the dossier above.
-3. If it EXISTS in the dossier → keep it exactly as is.
-4. If it does NOT exist in the dossier → do one of these:
-   a. If the dossier has the correct version of this fact → replace with the correct dossier value
-   b. If the dossier has no version of this fact → remove the number and rephrase without it
-      Example: "his strike rate of 90 in Tests" → "his strike rate in Tests" or remove the sentence
-5. Do NOT add any new facts that aren't in the dossier.
-6. Do NOT change anything else — tone, structure, headings, paragraphs must stay identical.
-7. If a sentence becomes awkward after removing a number, rewrite only that sentence naturally.
-
-Return the full corrected blog. No commentary, no explanation — just the blog.
+Format:
+ORIGINAL: [original sentence]
+FIXED: [fixed sentence]
 """
-    result = _invoke(prompt, temperature=0.0)
+    try:
+        raw = _invoke(prompt, temperature=0.0)
+    except Exception as e:
+        logger.warning(f"[AUDIT] LLM fix call failed: {e} — keeping original blog")
+        return blog
+
+    # ── Apply fixes back to the blog ──────────────────────────────────────────
+    corrected_blog = blog
+    for block in raw.strip().split("\n\n"):
+        lines = block.strip().split("\n")
+        orig_line = next((l[len("ORIGINAL:"):].strip() for l in lines if l.startswith("ORIGINAL:")), None)
+        fixed_line = next((l[len("FIXED:"):].strip() for l in lines if l.startswith("FIXED:")), None)
+        if orig_line and fixed_line and orig_line != fixed_line:
+            corrected_blog = corrected_blog.replace(orig_line, fixed_line, 1)
+
     logger.info(f"[AUDIT] Done | duration={time.time()-start:.1f}s")
-    return result
+    return corrected_blog
 
 
 @traceable(name="editorial_critic")

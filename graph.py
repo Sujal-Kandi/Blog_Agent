@@ -199,8 +199,10 @@ def node_audit_facts(state: BlogState) -> BlogState:
     audited = audit_facts(state["final_blog"], research_data, state["topic"])
     after_words = len(audited.split())
 
-    # Safety: if audit wiped more than 40% of the blog, it over-pruned — revert
-    if after_words < before_words * 0.6:
+    # Safety: if audit removed more than 20% of the blog, it over-pruned — revert.
+    # The new surgical audit should only ever change a handful of sentences,
+    # so even 20% is a very generous threshold.
+    if after_words < before_words * 0.8:
         _log.warning(
             f"[AUDIT] Audit removed too much content ({before_words} → {after_words} words, "
             f"{100*(1-after_words/before_words):.0f}% loss) — reverting to pre-audit blog"

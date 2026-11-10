@@ -177,12 +177,19 @@ def _domain_trust(url: str) -> float:
 # Sub-query templates for common topic patterns
 # {0} = primary subject, {1} = topic/skill/concept
 _TEMPLATES = {
+    "person_biography": [
+        "{0} biography career achievements",
+        "{0} early life family background",
+        "{0} records milestones statistics",
+        "{0} legacy impact greatest moments",
+        "{0} personality leadership style",
+    ],
     "person_skill": [
-        "{0} {1} mechanics technique",
-        "{0} {1} statistics data analysis",
-        "{0} {1} expert coach analysis",
-        "{0} {1} improvement evolution history",
-        "{0} {1} weakness strength breakdown",
+        "{0} {1} mechanics technique analysis",
+        "{0} {1} statistics data records",
+        "{0} {1} expert breakdown evolution",
+        "{0} {1} strengths weaknesses",
+        "{0} {1} greatest moments performances",
     ],
     "why_topic": [
         "{0} reasons causes explanation",
@@ -203,7 +210,7 @@ _TEMPLATES = {
         "{0} research findings evidence",
         "{0} real world examples cases",
         "{0} expert perspectives analysis",
-        "{0} latest developments trends",
+        "{0} history origin evolution",
     ],
 }
 
@@ -223,7 +230,7 @@ _EVERGREEN_KEYWORDS = {
 def _classify_topic(topic: str) -> tuple[str, bool]:
     """
     Returns (topic_type, freshness_required).
-    topic_type: 'evergreen' | 'fast-moving' | 'technical' | 'opinion'
+    topic_type: 'evergreen' | 'fast-moving' | 'general'
     freshness_required: True if sources should be recent
     """
     lo = topic.lower()
@@ -231,40 +238,112 @@ def _classify_topic(topic: str) -> tuple[str, bool]:
         return "fast-moving", True
     if any(k in lo for k in _EVERGREEN_KEYWORDS):
         return "evergreen", False
+    # Person biography topics are evergreen — detect via pattern
+    pattern, _ = _detect_pattern.__wrapped__(lo) if hasattr(_detect_pattern, '__wrapped__') else (None, None)
+    # Simple fallback: if topic starts with known biography lead phrases, treat as evergreen
+    biography_leads = ("tell me about", "who is", "about ", "biography of", "life of")
+    if any(lo.startswith(lead) for lead in biography_leads):
+        return "evergreen", False
     return "general", False
 
 
 def _detect_pattern(topic: str) -> tuple[str, list[str]]:
     """
     Detect topic pattern and return (pattern_name, template_args).
-    Falls back to 'concept_topic' if no pattern matched.
+
+    Priority order:
+    1. person_biography  — "Tell me about Virat Kohli", "Elon Musk Biography", "MS Dhoni Greatness"
+    2. person_skill      — "Virat Kohli Batting Technique", "Dhoni Finishing Ability"
+    3. why_topic         — "Why diets fail"
+    4. how_topic         — "How cricket was born"
+    5. concept_topic     — everything else
     """
     lo = topic.lower()
+    words = topic.strip().split()
 
-    # Pattern: "Person's Skill/Topic" — e.g. "Virat Kohli Batting Technique"
-    # Heuristic: first 1-2 words are a proper noun (capitalized), rest is the skill
-    words = topic.split()
-    if len(words) >= 3:
-        # Check if first word looks like a name (capitalized, not a stopword)
-        stopwords = {"why", "how", "what", "when", "where", "is", "are", "the", "a", "an"}
-        if words[0][0].isupper() and words[0].lower() not in stopwords:
-            # Person + skill pattern
-            person = " ".join(words[:2]) if words[1][0].isupper() else words[0]
-            skill = " ".join(words[len(person.split()):])
-            if skill:
-                return "person_skill", [person, skill]
+    # Hardcoded stopwords for leading question words
+    lead_stopwords = {"why", "how", "what", "when", "where", "is", "are", "the", "a",
+                      "an", "tell", "me", "about", "us", "explain", "describe"}
 
-    # Pattern: starts with "Why"
+    # Skill/technique keywords — presence means person_skill, not biography
+    skill_keywords = {
+        "technique", "batting", "bowling", "fielding", "strategy", "weakness",
+        "strength", "analysis", "mechanics", "style", "method", "approach",
+        "skills", "ability", "performance", "record", "stats"
+    }
+
+    # Biography trigger words — presence after a person name means biography
+    biography_triggers = {
+        "biography", "bio", "greatness", "legend", "life", "story", "career",
+        "journey", "profile", "aura", "prime", "rise", "legacy", "impact"
+    }
+
+    # Known non-person subjects — topics that look like proper nouns but aren't people
+    non_person_subjects = {
+        "hinduism", "buddhism", "islam", "christianity", "sikhism", "jainism",
+        "cricket", "football", "basketball", "tennis", "rugby", "baseball",
+        "india", "australia", "england", "pakistan", "america", "china",
+        "universe", "evolution", "democracy", "capitalism", "communism",
+    }
+
+    # ── Pattern 1: Explicit biography lead phrases ────────────────────────────
+    if lo.startswith(("tell me about ", "who is ", "about ", "explain ")):
+        for lead in ("tell me about ", "who is ", "about ", "explain "):
+            if lo.startswith(lead):
+                subject = topic[len(lead):].strip().rstrip("?. ")
+                subject_lo = subject.lower()
+                # If subject is a known non-person → concept_topic
+                if any(np in subject_lo for np in non_person_subjects):
+                    return "concept_topic", [subject]
+                return "person_biography", [subject]
+
+    # ── Pattern 2: Proper name detection ─────────────────────────────────────
+    # Collect leading capitalized words that look like a person's name
+    # Stop at the first non-capitalized word (or stopword)
+    name_words = []
+    for w in words:
+        clean = w.rstrip(".,?!")
+        if clean and clean[0].isupper() and clean.lower() not in lead_stopwords:
+            name_words.append(clean)
+        else:
+            break
+
+    if name_words:
+        # Cap name extraction at 2 words — "Virat Kohli" not "Virat Kohli Batting"
+        name_words = name_words[:2]
+        person = " ".join(name_words)
+        person_lo = person.lower()
+        remaining_words = words[len(name_words):]
+        remaining = " ".join(remaining_words).lower().strip().rstrip("?. ")
+
+        # If the person is actually a known non-person subject → concept_topic
+        if any(np in person_lo for np in non_person_subjects):
+            return "concept_topic", [topic]
+
+        # 1-2 proper name words followed by skill keywords → person_skill
+        if remaining and any(k in remaining for k in skill_keywords):
+            return "person_skill", [person, remaining]
+
+        # 1-2 proper name words followed by biography triggers → person_biography
+        if not remaining or any(t in remaining for t in biography_triggers):
+            # Only treat as biography if it's plausibly a person's name
+            # (at least one name word, not a known non-person subject)
+            if len(name_words) >= 1:
+                return "person_biography", [person]
+
+        # 2+ capitalized words with unknown remaining → person_biography
+        # (e.g. "Sachin Tendulkar Centuries" — still biography-ish)
+        if len(name_words) >= 2:
+            return "person_biography", [person]
+
+    # ── Pattern 3: Why / How ──────────────────────────────────────────────────
     if lo.startswith("why "):
-        subject = topic[4:].strip()
-        return "why_topic", [subject]
+        return "why_topic", [topic[4:].strip()]
 
-    # Pattern: starts with "How"
     if lo.startswith("how "):
-        subject = topic[4:].strip()
-        return "how_topic", [subject]
+        return "how_topic", [topic[4:].strip()]
 
-    # Default: concept topic
+    # ── Default ───────────────────────────────────────────────────────────────
     return "concept_topic", [topic]
 
 
@@ -293,17 +372,21 @@ def generate_sub_queries(topic: str, use_llm_fallback=None) -> tuple[list[str], 
         except (IndexError, KeyError):
             queries.append(f"{topic} {tmpl.split('{')[0].strip()}")
 
-    # Topic fidelity guard — score each query against the original topic
-    # Keep only queries that contain at least one word from the original topic
-    topic_words = set(topic.lower().split())
-    stopwords = {"the", "a", "an", "is", "are", "of", "in", "on", "at", "to", "for"}
-    topic_keywords = topic_words - stopwords
+    # Topic fidelity guard — keep queries that overlap with either the original
+    # topic words OR the extracted subject (args[0] for biography/concept).
+    # This prevents the guard from wrongly filtering biography queries where
+    # the subject "Virat Kohli" was stripped from "Tell me about Virat Kohli".
+    base_stopwords = {"the", "a", "an", "is", "are", "of", "in", "on", "at", "to",
+                      "for", "tell", "me", "about", "us", "explain", "describe"}
+    topic_keywords = set(topic.lower().split()) - base_stopwords
+    # Also include keywords from the extracted subject
+    subject_keywords = set(args[0].lower().split()) - base_stopwords
+    all_keywords = topic_keywords | subject_keywords
 
     filtered = []
     for q in queries:
         q_words = set(q.lower().split())
-        overlap = q_words & topic_keywords
-        if overlap:
+        if q_words & all_keywords:
             filtered.append(q)
 
     # If template filtering left us with < 3 queries, use LLM fallback
@@ -313,20 +396,38 @@ def generate_sub_queries(topic: str, use_llm_fallback=None) -> tuple[list[str], 
 
     # Always cap at 5 queries
     filtered = filtered[:5]
-    logger.info(f"[PHASE1] topic_type={topic_type} | queries={len(filtered)} | freshness={freshness_required}")
+    logger.info(
+        f"[PHASE1] topic_type={topic_type} | pattern={pattern} | "
+        f"queries={len(filtered)} | freshness={freshness_required}"
+    )
+    logger.info(f"[PHASE1] Done in 0.00s | type={topic_type} | queries={filtered}")
     return filtered, topic_type, freshness_required
 
 
 def _llm_sub_queries(topic: str, invoke_fn) -> list[str]:
-    """LLM fallback for unusual topics."""
+    """LLM fallback for unusual topics — generates 5 search queries."""
+    # Determine query angle based on detected pattern
+    pattern, args = _detect_pattern(topic)
+    if pattern == "person_biography":
+        angle_hint = "biography, career, records, achievements, legacy, personality"
+    elif pattern == "person_skill":
+        angle_hint = "mechanics, technique, data/stats, expert analysis, evolution"
+    elif pattern == "why_topic":
+        angle_hint = "causes, evidence, expert opinion, surprising facts, solutions"
+    elif pattern == "how_topic":
+        angle_hint = "steps, science, common mistakes, expert tips, outcomes"
+    else:
+        angle_hint = "overview, data/stats, real examples, expert views, history"
+
     prompt = f"""
 You are a search engine expert. Given this blog topic, generate exactly 5 focused search queries.
 
 Topic: "{topic}"
+Query angles to cover: {angle_hint}
 
 Rules:
 - Each query must be directly about the topic — no drift
-- Each query targets a different angle: mechanics, data/stats, expert analysis, history/evolution, common misconceptions
+- Each query targets a different angle from the list above
 - Keep each query short and keyword-dense (5-8 words max)
 - Do NOT include the word "blog" or "article" in queries
 - Return only the 5 queries, one per line, no numbering, no explanation
@@ -336,9 +437,12 @@ Return 5 queries now:
     try:
         raw = invoke_fn(prompt, temperature=0.2)
         queries = [line.strip() for line in raw.strip().split("\n") if line.strip()]
-        # Topic fidelity: keep only queries containing topic keywords
-        topic_words = set(topic.lower().split()) - {"the", "a", "an", "is", "are", "of"}
-        return [q for q in queries if any(w in q.lower() for w in topic_words)][:5]
+        # Fidelity: keep queries containing subject keywords
+        subject_words = set(args[0].lower().split()) - {"the", "a", "an", "is", "are", "of"}
+        topic_words = set(topic.lower().split()) - {"the", "a", "an", "is", "are", "of",
+                                                     "tell", "me", "about", "us"}
+        all_words = subject_words | topic_words
+        return [q for q in queries if any(w in q.lower() for w in all_words)][:5]
     except Exception as e:
         logger.warning(f"[PHASE1] LLM fallback failed: {e}")
         return [topic, f"{topic} statistics data", f"{topic} expert analysis"]

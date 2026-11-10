@@ -106,27 +106,60 @@ def node_retrieve_memory(state: BlogState) -> BlogState:
 
 @_guarded
 def node_write(state: BlogState) -> BlogState:
+    import logging as _logging
+    _log = _logging.getLogger("blog_agent")
+
     min_words = {"short": 500, "medium": 900, "long": 1800}
     threshold = min_words.get(state["length"], 900)
-    draft = ""
 
+    research_data = state["research_data"]
+    facts = state.get("facts", "")
+
+    # Guard: if research produced nothing (0 claims, empty dossier) the writer
+    # has no grounding and will either hallucinate or produce a near-empty blog.
+    # Inject an explicit instruction so the writer knows to draw on general
+    # knowledge rather than a dossier — it stays honest and still produces a
+    # full-length blog (this is the Hinduism/philosophy case).
+    if not research_data or len(research_data.strip()) < 100:
+        _log.warning(
+            "[WRITE] Research dossier is empty or near-empty — "
+            "writer will use general knowledge with explicit disclosure."
+        )
+        research_data = (
+            "NOTE: Web research returned no structured claims for this topic. "
+            "Draw on well-established general knowledge. "
+            "Do NOT invent statistics or numbers — write without them. "
+            "Be clear and confident about what is widely known; "
+            "attribute nothing to a specific source unless you are certain."
+        )
+        # Also clear facts so citations node doesn't append a broken Sources block
+        facts = facts or ""
+
+    draft = ""
     for attempt in range(3):
         draft = write_blog(
             topic=state["topic"],
             audience=state["audience"],
             plan=state["plan"],
-            research_data=state["research_data"],
+            research_data=research_data,
             memory=state["memory"],
             length=state["length"],
             gap=state.get("gap", ""),
-            facts=state.get("facts", state["research_data"]),  # Fix 4: use raw_facts, not dossier twice
+            facts=facts if facts else research_data,
         )
         word_count = len(draft.split())
         if word_count >= threshold:
             break
-        import logging as _logging
-        _logging.getLogger("blog_agent").warning(
+        _log.warning(
             f"[WRITE] Output too short ({word_count} words, need {threshold}), retrying ({attempt + 1}/3)"
+        )
+
+    # Hard-fail guard: if after 3 attempts the draft is still suspiciously short,
+    # log it loudly but keep whatever we got — better than a crash.
+    if len(draft.split()) < threshold * 0.5:
+        _log.error(
+            f"[WRITE] Draft still under 50% of target after 3 attempts "
+            f"({len(draft.split())} words). Keeping best effort."
         )
 
     state["draft"] = draft
@@ -164,10 +197,13 @@ def node_targeted_revision(state: BlogState) -> BlogState:
 def node_post_revision_check(state: BlogState) -> BlogState:
     """
     Post-Revision Safety Check — pure Python, zero LLM call.
-    If the revision produced something shorter than the original draft
-    (e.g. LLM truncated output), fall back to the original draft.
-    Also enforces the same minimum word count as node_write.
+    1. If the revision produced something shorter than the original draft
+       (e.g. LLM truncated output), fall back to the original draft.
+    2. Strips embedded critic/score blocks that sometimes leak into final_blog
+       when the LLM returns critique text instead of a revised blog.
+    3. Enforces the same minimum word count as node_write.
     """
+    import re as _re
     import logging as _logging
     _log = _logging.getLogger("blog_agent")
 
@@ -193,6 +229,28 @@ def node_post_revision_check(state: BlogState) -> BlogState:
     else:
         _log.info(f"[POST-REVISION] Revision passed check ({revised_words} words)")
 
+    # ── Strip embedded critic output from final_blog ──────────────────────────
+    # If the LLM returned the critique/score block instead of (or appended to)
+    # the blog, strip everything from the first "DIMENSION" or "Overall Score:"
+    # or "Overall Verdict" line onward, then re-check length.
+    blog = state["final_blog"]
+    critic_markers = [
+        r'^DIMENSION\s+\d+', r'^Overall\s+(Score|Verdict)\s*[:\-]',
+        r'^Pass\s*[:\-]', r'^Priority\s+Fix\s*[:\-]',
+        r'^Blog Score\s*:', r'^## Blog Score',
+    ]
+    for marker in critic_markers:
+        m = _re.search(marker, blog, _re.IGNORECASE | _re.MULTILINE)
+        if m:
+            truncated = blog[:m.start()].rstrip()
+            if len(truncated.split()) >= threshold * 0.5:
+                _log.warning(
+                    f"[POST-REVISION] Stripped embedded critic block at pos {m.start()} "
+                    f"(marker: {marker!r})"
+                )
+                state["final_blog"] = truncated
+            break
+
     return state
 
 @_guarded
@@ -209,11 +267,29 @@ def node_fix_cliches(state: BlogState) -> BlogState:
 
 @_guarded
 def node_citations(state: BlogState) -> dict[str, str]:
-    return {
-        "final_blog": generate_citations(
-            state["final_blog"], state["facts"], state["topic"], state["facts"]
+    import logging as _logging
+    _log = _logging.getLogger("blog_agent")
+
+    original = state["final_blog"]
+    facts = state.get("facts", "")
+
+    try:
+        result = generate_citations(
+            original, facts, state["topic"], facts
         )
-    }
+    except Exception as e:
+        _log.error(f"[CITATIONS] generate_citations raised: {e} — keeping original blog")
+        result = original
+
+    # Safety: if citations somehow returned an empty/shorter-than-half string,
+    # something went wrong — keep the original blog body intact.
+    if not result or len(result.strip()) < len(original.strip()) * 0.5:
+        _log.warning(
+            "[CITATIONS] Result suspiciously short after citations — reverting to original"
+        )
+        result = original
+
+    return {"final_blog": result}
 
 @_guarded
 def node_extras(state: BlogState) -> dict[str, object]:

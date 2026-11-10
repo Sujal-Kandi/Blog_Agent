@@ -668,11 +668,21 @@ def generate_citations(blog: str, facts: str, topic: str, research_data: str = "
     Parses raw_facts (format: [N] claim | source_title | source_url)
     and builds the Sources section directly from real data.
     Then adds inline [N] markers to the blog where claims appear.
+
+    Always appends a Sources block when facts are available — even when
+    inline matching fails (paraphrased content, broad topics, etc.)
     """
     import re
 
+    if not facts or not facts.strip():
+        logger.warning("[CITATIONS] Empty facts string — skipping citations")
+        return blog
+
     # Parse the structured facts list
     source_map = {}  # citation_num -> (claim, title, url)
+    # Deduplicate by URL so the same source doesn't appear multiple times
+    seen_urls: set[str] = set()
+
     for line in facts.strip().split("\n"):
         line = line.strip()
         if not line:
@@ -681,58 +691,75 @@ def generate_citations(blog: str, facts: str, topic: str, research_data: str = "
         m = re.match(r'^\[(\d+)\]\s+(.+?)\s+\|\s+(.+?)\s+\|\s+(https?://\S+)', line)
         if m:
             num, claim, title, url = m.group(1), m.group(2), m.group(3), m.group(4)
-            source_map[num] = (claim.strip(), title.strip(), url.strip())
+            url = url.rstrip(".,;)")  # strip trailing punctuation that breaks links
+            if url not in seen_urls:
+                seen_urls.add(url)
+                source_map[num] = (claim.strip(), title.strip(), url.strip())
 
     if not source_map:
-        # No structured facts available — return blog as-is with no Sources
-        logger.warning("[CITATIONS] No structured facts found — skipping citations")
+        logger.warning("[CITATIONS] No structured facts parsed — skipping citations")
         return blog
 
-    # Add inline citation markers to the blog
-    # For each fact, find its key words in the blog and append [N] after the sentence
+    # ── Inline citation markers ───────────────────────────────────────────────
+    # For each fact, find its key words in the blog and append [N] after the sentence.
+    # Uses a relaxed word-overlap heuristic so paraphrased text still matches.
     cited_blog = blog
-    used_citations = []
+    used_citations: list[str] = []
 
     for num, (claim, title, url) in source_map.items():
-        # Extract the most distinctive 4-6 word phrase from the claim
-        claim_words = [w for w in claim.lower().split() if len(w) > 3][:5]
+        # Extract the most distinctive keywords from the claim (skip stopwords)
+        stopwords = {"that", "this", "with", "from", "have", "been", "were", "their", "they"}
+        claim_words = [w for w in claim.lower().split() if len(w) > 3 and w not in stopwords][:6]
         if not claim_words:
             continue
 
-        # Search for a sentence containing these words
-        pattern = r'([^.!?]*' + re.escape(claim_words[0]) + r'[^.!?]*[.!?])'
-        matches = list(re.finditer(pattern, cited_blog, re.IGNORECASE))
+        # Try matching with progressively relaxed thresholds
+        matched = False
+        for anchor in claim_words[:3]:  # try up to 3 anchor words
+            pattern = r'([^.!?]*' + re.escape(anchor) + r'[^.!?]*[.!?])'
+            matches = list(re.finditer(pattern, cited_blog, re.IGNORECASE))
+            for match in matches:
+                sentence = match.group(0)
+                words_found = sum(1 for w in claim_words if w in sentence.lower())
+                # Relaxed: 1 out of N is enough when claim is short, 2+ for longer claims
+                threshold = 1 if len(claim_words) <= 2 else 2
+                if words_found >= threshold:
+                    marker = f"[{num}]"
+                    end_pos = match.end()
+                    # Avoid double-marking the same spot
+                    context = cited_blog[max(0, end_pos - 25):end_pos + 5]
+                    if marker not in context:
+                        cited_blog = cited_blog[:end_pos - 1] + marker + cited_blog[end_pos - 1:]
+                        used_citations.append(num)
+                        matched = True
+                        break
+            if matched:
+                break
 
-        for match in matches:
-            sentence = match.group(0)
-            # Check if enough claim words appear in this sentence
-            words_found = sum(1 for w in claim_words if w in sentence.lower())
-            if words_found >= min(2, len(claim_words)):
-                # Only add citation if not already cited at this spot
-                marker = f"[{num}]"
-                if marker not in cited_blog[max(0, match.end()-20):match.end()+5]:
-                    # Insert citation before the sentence-ending punctuation
-                    cited_blog = cited_blog[:match.end()-1] + marker + cited_blog[match.end()-1:]
-                    used_citations.append(num)
-                    break  # only cite once per claim
-
-    # Build Sources section from actually used citations
-    # Fall back to all sources if no inline citations were placed
-    citations_to_show = used_citations if used_citations else list(source_map.keys())
-    # Deduplicate while preserving order
-    seen = set()
-    citations_to_show = [n for n in citations_to_show if not (n in seen or seen.add(n))]
-
+    # ── Build Sources block ───────────────────────────────────────────────────
+    # Always show ALL sources — inline-cited ones first, then remaining.
+    # This ensures the Sources block is never missing even when inline
+    # matching fails completely (e.g. heavily paraphrased or broad topics).
+    seen_shown: set[str] = set()
     sources_lines = ["Sources"]
-    for num in citations_to_show:
-        if num in source_map:
+
+    # Inline-cited sources first (preserving order)
+    for num in used_citations:
+        if num not in seen_shown and num in source_map:
             _, title, url = source_map[num]
             sources_lines.append(f"[{num}] {title} — {url}")
+            seen_shown.add(num)
 
-    # Also add any remaining sources that weren't inline-cited
+    # Remaining sources that weren't matched inline
     for num, (_, title, url) in source_map.items():
-        if num not in seen:
+        if num not in seen_shown:
             sources_lines.append(f"[{num}] {title} — {url}")
+            seen_shown.add(num)
+
+    logger.info(
+        f"[CITATIONS] inline_markers={len(used_citations)} | "
+        f"total_sources={len(sources_lines) - 1}"
+    )
 
     sources_block = "\n".join(sources_lines)
     return cited_blog.rstrip() + "\n\n" + sources_block

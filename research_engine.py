@@ -588,6 +588,10 @@ def extract_claims(chunks: list[dict], topic: str, invoke_fn) -> list[Claim]:
     """
     Phase 5: One batched LLM call to extract all factual claims from top chunks.
     Returns list of Claim objects. Off-topic claims are filtered out.
+
+    For broad/philosophical topics (Hinduism, history, culture, etc.) stats and
+    quotes are rare — we explicitly include "general" and "event" claims so the
+    dossier is never empty for these topics.
     """
     if not chunks:
         return []
@@ -608,11 +612,12 @@ You are a research analyst extracting factual claims for a blog about: "{topic}"
 
 Below are {len(chunks)} evidence chunks from real web sources.
 
-Extract EVERY factual claim that is:
-- A specific statistic or number
+Extract EVERY factual claim that is verifiable and useful for a blog writer:
+- A specific statistic, number, or measurement
 - A named quote from a real person
-- A specific event with a date
-- A concrete fact with evidence in the text
+- A specific event with a date or time period
+- A concrete descriptive fact (e.g. "X is the oldest/largest/most...", "X originated in Y", "X has N practitioners")
+- A widely-accepted general fact that adds depth or context
 
 For each claim return a JSON object on its own line (JSONL format):
 {{"claim": "...", "evidence": "exact passage supporting it", "source_url": "...", "source_title": "...", "published_date": "...", "claim_type": "stat|quote|event|general", "topic_relevant": true/false, "confidence": 0.0-1.0}}
@@ -620,12 +625,13 @@ For each claim return a JSON object on its own line (JSONL format):
 Rules:
 - claim_type "stat" = numbers, percentages, measurements
 - claim_type "quote" = exact words from a named person
-- claim_type "event" = specific dated occurrence
-- claim_type "general" = concrete fact without a number
-- topic_relevant = true ONLY if the claim directly relates to "{topic}"
+- claim_type "event" = specific dated or historical occurrence
+- claim_type "general" = concrete fact, description, or widely-accepted knowledge
+- topic_relevant = true if the claim is relevant to "{topic}" in any way
 - confidence = how certain you are this is accurate based on the evidence
-- Do NOT invent claims — only extract what's explicitly in the evidence
-- Skip vague or generic statements
+- Do NOT invent claims — only extract what's in the evidence
+- Include "general" and "event" claims liberally — they are as valuable as stats
+- Minimum extraction target: aim for at least 8 claims per chunk batch
 - Return ONLY the JSONL lines, nothing else
 
 Evidence:
@@ -638,26 +644,33 @@ Evidence:
         logger.warning(f"[PHASE5] Claim extraction failed: {e}")
         return []
 
+    import json as _json
     claims = []
     for line in raw.strip().split("\n"):
         line = line.strip()
         if not line.startswith("{"):
             continue
         try:
-            import json
-            data = json.loads(line)
+            data = _json.loads(line)
+            # Coerce confidence — accept strings like "0.8" or missing values
+            try:
+                conf = float(data.get("confidence", 0.5))
+            except (TypeError, ValueError):
+                conf = 0.5
+
             claim = Claim(
-                claim=data.get("claim", ""),
-                evidence=data.get("evidence", ""),
-                source_url=data.get("source_url", ""),
-                source_title=data.get("source_title", ""),
-                published_date=data.get("published_date", ""),
+                claim=data.get("claim", "").strip(),
+                evidence=data.get("evidence", "").strip(),
+                source_url=data.get("source_url", "").strip(),
+                source_title=data.get("source_title", "").strip(),
+                published_date=str(data.get("published_date", ""))[:10],
                 claim_type=data.get("claim_type", "general"),
+                # Treat missing/null topic_relevant as True — be inclusive
                 topic_relevant=bool(data.get("topic_relevant", True)),
-                confidence=float(data.get("confidence", 0.5)),
+                confidence=conf,
             )
-            # Topic fidelity filter — drop off-topic claims
-            if claim.topic_relevant and claim.claim:
+            # Only filter: must have a non-empty claim and be topic-relevant
+            if claim.claim and claim.topic_relevant:
                 claims.append(claim)
         except Exception as e:
             logger.debug(f"[PHASE5] Failed to parse claim line: {e} | {line[:80]}")
@@ -920,7 +933,7 @@ def run_research_engine(topic: str, competitor_gap: str, invoke_fn) -> tuple[str
     dossier = build_dossier(verified, top_sources, competitor_gap, topic)
 
     # Build structured facts list for programmatic citations
-    # Format: claim | source_title | source_url
+    # Format: [N] claim | source_title | source_url
     # This is used by generate_citations to build real source links
     all_claims = verified["confirmed"] + verified["single_source"]
     raw_facts = "\n".join(
@@ -928,6 +941,30 @@ def run_research_engine(topic: str, competitor_gap: str, invoke_fn) -> tuple[str
         for i, c in enumerate(all_claims, 1)
         if c.source_url  # only include claims that have a real URL
     )
+
+    # Safety net: if no claims were extracted at all (e.g. Hinduism-type broad
+    # topics where Phase 5 returns nothing), still give the writer some dossier
+    # content by including the top search snippets directly.
+    if not all_claims and top_sources:
+        logger.warning(
+            "[RESEARCH ENGINE] Zero claims extracted — falling back to raw search snippets"
+        )
+        fallback_lines = [f"RESEARCH DOSSIER — {topic}\n",
+                          "── RAW SEARCH SNIPPETS (use as background context only) ──"]
+        for i, src in enumerate(top_sources, 1):
+            snippet = (src.get("content") or src.get("full_content") or "")[:600]
+            fallback_lines.append(
+                f"SOURCE-{i}: {src.get('title', 'Unknown')}\n"
+                f"  URL: {src.get('url', '')}\n"
+                f"  Snippet: {snippet}\n"
+            )
+        dossier = "\n".join(fallback_lines)
+        # Build raw_facts from source URLs alone so citations still has real links
+        raw_facts = "\n".join(
+            f"[{i}] {src.get('title', 'Source')} | {src.get('title', 'Source')} | {src.get('url', '')}"
+            for i, src in enumerate(top_sources, 1)
+            if src.get("url")
+        )
 
     total = time.time() - start
     total_claims = sum(len(v) for v in verified.values())

@@ -410,9 +410,6 @@ Write the full blog now. Lead with {primary.split('—')[0].strip()}. Every word
     result = _invoke(prompt, temperature=0.65)
     logger.info(f"[WRITER] Done | topic_type={topic_type} | duration={time.time()-start:.1f}s | words={len(result.split())}")
     return result
-    result = _invoke(prompt, temperature=0.65)
-    logger.info(f"[WRITER] Done | duration={time.time()-start:.1f}s | words={len(result.split())}")
-    return result
 
 
 @traceable(name="audit_facts")

@@ -106,17 +106,31 @@ def node_retrieve_memory(state: BlogState) -> BlogState:
 
 @_guarded
 def node_write(state: BlogState) -> BlogState:
-    state["draft"] = write_blog(
-        topic=state["topic"],
-        audience=state["audience"],
-        plan=state["plan"],
-        research_data=state["research_data"],
-        memory=state["memory"],
-        length=state["length"],
-        gap=state.get("gap", ""),
-        facts=state["research_data"],  # dossier is the authoritative source
-    )
-    state["final_blog"] = state["draft"]
+    min_words = {"short": 500, "medium": 900, "long": 1800}
+    threshold = min_words.get(state["length"], 900)
+    draft = ""
+
+    for attempt in range(3):
+        draft = write_blog(
+            topic=state["topic"],
+            audience=state["audience"],
+            plan=state["plan"],
+            research_data=state["research_data"],
+            memory=state["memory"],
+            length=state["length"],
+            gap=state.get("gap", ""),
+            facts=state.get("facts", state["research_data"]),  # Fix 4: use raw_facts, not dossier twice
+        )
+        word_count = len(draft.split())
+        if word_count >= threshold:
+            break
+        import logging as _logging
+        _logging.getLogger("blog_agent").warning(
+            f"[WRITE] Output too short ({word_count} words, need {threshold}), retrying ({attempt + 1}/3)"
+        )
+
+    state["draft"] = draft
+    state["final_blog"] = draft
     state["iteration"] = 0
     return state
 
@@ -144,6 +158,41 @@ def node_targeted_revision(state: BlogState) -> BlogState:
     state["final_blog"] = targeted_revision(
         state["final_blog"], state["critique"], state["topic"], state["audience"]
     )
+    return state
+
+@_guarded
+def node_post_revision_check(state: BlogState) -> BlogState:
+    """
+    Post-Revision Safety Check — pure Python, zero LLM call.
+    If the revision produced something shorter than the original draft
+    (e.g. LLM truncated output), fall back to the original draft.
+    Also enforces the same minimum word count as node_write.
+    """
+    import logging as _logging
+    _log = _logging.getLogger("blog_agent")
+
+    min_words = {"short": 500, "medium": 900, "long": 1800}
+    threshold = min_words.get(state["length"], 900)
+
+    revised_words = len(state["final_blog"].split())
+    draft_words = len(state["draft"].split())
+
+    if revised_words < threshold:
+        _log.warning(
+            f"[POST-REVISION] Revised blog too short ({revised_words} words, "
+            f"need {threshold}) — falling back to original draft ({draft_words} words)"
+        )
+        state["final_blog"] = state["draft"]
+    elif revised_words < draft_words * 0.75:
+        # Revision lost more than 25% of content — treat as truncation, revert
+        _log.warning(
+            f"[POST-REVISION] Revision lost too much content "
+            f"({draft_words} → {revised_words} words) — falling back to original draft"
+        )
+        state["final_blog"] = state["draft"]
+    else:
+        _log.info(f"[POST-REVISION] Revision passed check ({revised_words} words)")
+
     return state
 
 @_guarded
@@ -185,33 +234,30 @@ def quality_router(state: BlogState) -> str:
     Reads the Editorial Critic output to decide: pass or targeted revision.
     Max 1 revision pass to keep latency low.
     """
+    import re as _re
     critique = state.get("critique", "")
     iteration = state.get("iteration", 0)
-    max_iter = state.get("max_iterations", 1)  # max 1 revision
+    max_iter = state.get("max_iterations", 1)
 
-    # Already revised once — move on regardless
+    # Already at max iterations — move on regardless
     if iteration >= max_iter:
         return "done"
 
-    # Check if critic said Pass: YES
-    if "pass" in critique.lower():
-        lines = [l.strip().lower() for l in critique.split("\n")]
-        for line in lines:
-            if line.startswith("pass") and "yes" in line:
-                return "done"
+    # Explicit Pass: YES check — flexible regex, handles spacing/case variations
+    pass_match = _re.search(r'pass\s*[:\-]?\s*(yes|no)', critique, _re.IGNORECASE)
+    if pass_match:
+        if pass_match.group(1).lower() == "yes":
+            return "done"
+        # Pass: NO — fall through to score check
 
-    # Check overall scores — if critic flagged issues, revise
-    import re
-    scores = re.findall(r'score:\s*(\d+)/10', critique, re.IGNORECASE)
+    # Score check — revise only if at least one dimension is below 7
+    scores = _re.findall(r'score:\s*(\d+)/10', critique, _re.IGNORECASE)
     if scores:
         low_scores = [int(s) for s in scores if int(s) < 7]
-        if not low_scores:
-            return "done"
-        return "revise"
+        return "revise" if low_scores else "done"
 
-    # Default: if critique exists and no clear pass, do one revision
-    if critique and iteration == 0:
-        return "revise"
+    # Critic returned no parseable scores (failed or empty) — skip revision,
+    # don't waste a revision pass on garbage critique output
     return "done"
 
 
@@ -220,20 +266,21 @@ def quality_router(state: BlogState) -> str:
 def build_graph():
     g = StateGraph(BlogState)
 
-    g.add_node("planner",          node_plan)
-    g.add_node("competitor_gap",   node_competitor_gap)
-    g.add_node("research",         node_research)
-    g.add_node("extract_facts",    node_extract_facts)
-    g.add_node("retrieve_memory",  node_retrieve_memory)
-    g.add_node("write",            node_write)
-    g.add_node("audit_facts",      node_audit_facts)
-    g.add_node("critic",           node_critique_rewrite)
-    g.add_node("targeted_revision",node_targeted_revision)
-    g.add_node("score",            node_score)
-    g.add_node("fix_cliches",      node_fix_cliches)
-    g.add_node("citations",        node_citations)
-    g.add_node("extras",           node_extras)
-    g.add_node("save_memory",      node_save_memory)
+    g.add_node("planner",               node_plan)
+    g.add_node("competitor_gap",         node_competitor_gap)
+    g.add_node("research",               node_research)
+    g.add_node("extract_facts",          node_extract_facts)
+    g.add_node("retrieve_memory",        node_retrieve_memory)
+    g.add_node("write",                  node_write)
+    g.add_node("audit_facts",            node_audit_facts)
+    g.add_node("critic",                 node_critique_rewrite)
+    g.add_node("targeted_revision",      node_targeted_revision)
+    g.add_node("post_revision_check",    node_post_revision_check)
+    g.add_node("score",                  node_score)
+    g.add_node("fix_cliches",            node_fix_cliches)
+    g.add_node("citations",              node_citations)
+    g.add_node("extras",                 node_extras)
+    g.add_node("save_memory",            node_save_memory)
 
     g.set_entry_point("planner")
 
@@ -255,8 +302,9 @@ def build_graph():
         }
     )
 
-    # After targeted revision — go to score directly (no second critic loop)
-    g.add_edge("targeted_revision", "score")
+    # After targeted revision — safety check, then score
+    g.add_edge("targeted_revision", "post_revision_check")
+    g.add_edge("post_revision_check", "score")
 
     g.add_edge("score",            "fix_cliches")
     g.add_edge("fix_cliches",      "citations")

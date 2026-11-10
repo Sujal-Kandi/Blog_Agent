@@ -592,25 +592,46 @@ def extract_claims(chunks: list[dict], topic: str, invoke_fn) -> list[Claim]:
     For broad/philosophical topics (Hinduism, history, culture, etc.) stats and
     quotes are rare — we explicitly include "general" and "event" claims so the
     dossier is never empty for these topics.
+
+    Token budget: each chunk is capped at 600 chars and total evidence block
+    at ~12 000 chars to stay within the model's TPM limit.
     """
     if not chunks:
         return []
 
-    # Build evidence block for the LLM
-    evidence_block = ""
+    # ── Token budget guard ────────────────────────────────────────────────────
+    # The model limit is 8 000 TPM. Each char ≈ 0.3 tokens, so ~26 000 chars
+    # is roughly 8 000 tokens. We reserve ~8 000 chars for the prompt template
+    # and instructions, leaving ~12 000 chars for the evidence block.
+    MAX_EVIDENCE_CHARS = 12_000
+    CHUNK_TEXT_CAP    = 600   # chars per chunk (was 8 000 — way too big)
+
+    # Build evidence block with per-chunk cap
+    evidence_lines = []
+    total_chars = 0
+    chunks_used = 0
     for i, chunk in enumerate(chunks, 1):
-        evidence_block += f"""
-[CHUNK {i}]
-Source: {chunk['source_title']}
-URL: {chunk['source_url']}
-Date: {chunk['published_date']}
-Text: {chunk['text']}
----"""
+        text = chunk["text"][:CHUNK_TEXT_CAP]
+        block = (
+            f"\n[CHUNK {i}]\n"
+            f"Source: {chunk['source_title']}\n"
+            f"URL: {chunk['source_url']}\n"
+            f"Date: {chunk['published_date']}\n"
+            f"Text: {text}\n---"
+        )
+        if total_chars + len(block) > MAX_EVIDENCE_CHARS:
+            break
+        evidence_lines.append(block)
+        total_chars += len(block)
+        chunks_used += 1
+
+    evidence_block = "".join(evidence_lines)
+    logger.info(f"[PHASE5] Using {chunks_used}/{len(chunks)} chunks | evidence_chars={total_chars}")
 
     prompt = f"""
 You are a research analyst extracting factual claims for a blog about: "{topic}"
 
-Below are {len(chunks)} evidence chunks from real web sources.
+Below are {chunks_used} evidence chunks from real web sources.
 
 Extract EVERY factual claim that is verifiable and useful for a blog writer:
 - A specific statistic, number, or measurement
@@ -675,7 +696,7 @@ Evidence:
         except Exception as e:
             logger.debug(f"[PHASE5] Failed to parse claim line: {e} | {line[:80]}")
 
-    logger.info(f"[PHASE5] Extracted {len(claims)} on-topic claims from {len(chunks)} chunks")
+    logger.info(f"[PHASE5] Extracted {len(claims)} on-topic claims from {chunks_used} chunks")
     return claims
 
 

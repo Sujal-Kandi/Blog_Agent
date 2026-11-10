@@ -312,6 +312,11 @@ def write_blog(topic: str, audience: str, plan: str, research_data: str, memory:
     length_instruction = LENGTH_GUIDE.get(length, LENGTH_GUIDE["medium"])
     gap_section = f"\nCompetitor Gap — what existing articles miss (address this angle):\n{gap}\n" if gap else ""
 
+    # Cap research inputs to avoid 413 token errors
+    # dossier at 5 000 chars, facts at 2 000 chars
+    verified_facts_input = verified_facts[:5_000] if verified_facts else ""
+    plan_input           = plan[:3_000] if plan else ""
+
     # Extract topic type from strategy plan for adaptive mechanic weighting
     import re as _re
     topic_type_match = _re.search(r'topic type[:\s]+([A-Za-z]+)', plan, _re.IGNORECASE)
@@ -346,11 +351,11 @@ Target Audience: {audience}
 Length: {length_instruction}
 
 WRITING STRATEGY (follow this exactly):
-{plan}
+{plan_input}
 {gap_section}
 
 RESEARCH DOSSIER — YOUR ONLY SOURCE OF FACTS:
-{verified_facts}
+{verified_facts_input}
 
 PAST CONTEXT (from memory):
 {memory}
@@ -418,10 +423,16 @@ def audit_facts(blog: str, dossier: str, topic: str) -> str:
     Post-write fact audit — finds every number/statistic in the blog,
     checks if it exists in the dossier, removes or replaces hallucinated ones.
     Runs between write and critique_rewrite.
+
+    Both blog and dossier are capped before sending to stay within TPM limits.
     """
     _check_cancelled()
     logger.info(f"[AUDIT] Starting fact audit | topic='{topic[:60]}'")
     start = time.time()
+
+    # Cap inputs to avoid 413 — blog capped at 6 000 chars, dossier at 4 000
+    blog_input    = blog[:6_000]
+    dossier_input = dossier[:4_000]
 
     prompt = f"""
 You are a fact auditor. Your job is to find and fix hallucinated statistics in a blog.
@@ -429,10 +440,10 @@ You are a fact auditor. Your job is to find and fix hallucinated statistics in a
 Topic: {topic}
 
 VERIFIED DOSSIER (the only allowed source of facts):
-{dossier}
+{dossier_input}
 
 BLOG TO AUDIT:
-{blog}
+{blog_input}
 
 Your task:
 1. Find every specific number, percentage, statistic, measurement, or named data point in the blog.

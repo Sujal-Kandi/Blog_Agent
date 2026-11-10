@@ -169,10 +169,45 @@ def node_write(state: BlogState) -> BlogState:
 
 @_guarded
 def node_audit_facts(state: BlogState) -> BlogState:
-    """Strips hallucinated numbers — runs right after write, before critique."""
-    state["final_blog"] = audit_facts(
-        state["final_blog"], state["research_data"], state["topic"]
-    )
+    """
+    Strips hallucinated numbers — runs right after write, before critique.
+    Skipped when research_data is a fallback stub (no real dossier available)
+    to prevent the auditor from stripping the entire blog.
+    """
+    import logging as _logging
+    _log = _logging.getLogger("blog_agent")
+
+    research_data = state["research_data"]
+
+    # If the dossier is the fallback stub injected by node_write, there are no
+    # real verified facts to audit against — skip to avoid wiping the blog.
+    FALLBACK_MARKER = "NOTE: Web research returned no structured claims"
+    RAW_SNIPPET_MARKER = "── RAW SEARCH SNIPPETS"
+    if (
+        not research_data
+        or FALLBACK_MARKER in research_data
+        or RAW_SNIPPET_MARKER in research_data
+        or len(research_data.strip()) < 150
+    ):
+        _log.warning(
+            "[AUDIT] Skipping fact audit — dossier is a fallback stub, "
+            "no verified facts to audit against."
+        )
+        return state
+
+    before_words = len(state["final_blog"].split())
+    audited = audit_facts(state["final_blog"], research_data, state["topic"])
+    after_words = len(audited.split())
+
+    # Safety: if audit wiped more than 40% of the blog, it over-pruned — revert
+    if after_words < before_words * 0.6:
+        _log.warning(
+            f"[AUDIT] Audit removed too much content ({before_words} → {after_words} words, "
+            f"{100*(1-after_words/before_words):.0f}% loss) — reverting to pre-audit blog"
+        )
+        return state
+
+    state["final_blog"] = audited
     return state
 
 @_guarded

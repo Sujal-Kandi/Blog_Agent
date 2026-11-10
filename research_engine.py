@@ -170,282 +170,110 @@ def _domain_trust(url: str) -> float:
         return 0.5
 
 
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 1 — Topic Intelligence
+# PHASE 1 — Topic Intelligence (fully LLM-driven, zero hardcoding)
 # ═══════════════════════════════════════════════════════════════════════════════
-
-# Sub-query templates for common topic patterns
-# {0} = primary subject, {1} = topic/skill/concept
-_TEMPLATES = {
-    "person_biography": [
-        "{0} biography career achievements",
-        "{0} early life family background",
-        "{0} records milestones statistics",
-        "{0} legacy impact greatest moments",
-        "{0} personality leadership style",
-    ],
-    "person_skill": [
-        "{0} {1} mechanics technique analysis",
-        "{0} {1} statistics data records",
-        "{0} {1} expert breakdown evolution",
-        "{0} {1} strengths weaknesses",
-        "{0} {1} greatest moments performances",
-    ],
-    "why_topic": [
-        "{0} reasons causes explanation",
-        "{0} research studies evidence",
-        "{0} expert opinion analysis",
-        "{0} surprising facts statistics",
-        "{0} solutions alternatives",
-    ],
-    "how_topic": [
-        "{0} step by step guide",
-        "{0} science behind explained",
-        "{0} common mistakes avoid",
-        "{0} expert tips data",
-        "{0} results outcomes research",
-    ],
-    "concept_topic": [
-        "{0} explained data statistics",
-        "{0} research findings evidence",
-        "{0} real world examples cases",
-        "{0} expert perspectives analysis",
-        "{0} history origin evolution",
-    ],
-}
-
-_FAST_MOVING_KEYWORDS = {
-    "ai", "artificial intelligence", "machine learning", "crypto", "bitcoin",
-    "economy", "inflation", "stock", "market", "election", "politics",
-    "startup", "funding", "ipo", "climate", "covid", "pandemic"
-}
-
-_EVERGREEN_KEYWORDS = {
-    "technique", "history", "science", "health", "fitness", "nutrition",
-    "psychology", "philosophy", "cricket", "football", "sport", "cooking",
-    "gardening", "travel", "architecture", "art", "music", "culture"
-}
-
-
-def _classify_topic(topic: str) -> tuple[str, bool]:
-    """
-    Returns (topic_type, freshness_required).
-    topic_type: 'evergreen' | 'fast-moving' | 'general'
-    freshness_required: True if sources should be recent
-    """
-    lo = topic.lower()
-    if any(k in lo for k in _FAST_MOVING_KEYWORDS):
-        return "fast-moving", True
-    if any(k in lo for k in _EVERGREEN_KEYWORDS):
-        return "evergreen", False
-    # Person biography topics are evergreen — detect via pattern
-    pattern, _ = _detect_pattern.__wrapped__(lo) if hasattr(_detect_pattern, '__wrapped__') else (None, None)
-    # Simple fallback: if topic starts with known biography lead phrases, treat as evergreen
-    biography_leads = ("tell me about", "who is", "about ", "biography of", "life of")
-    if any(lo.startswith(lead) for lead in biography_leads):
-        return "evergreen", False
-    return "general", False
-
-
-def _detect_pattern(topic: str) -> tuple[str, list[str]]:
-    """
-    Detect topic pattern and return (pattern_name, template_args).
-
-    Priority order:
-    1. person_biography  — "Tell me about Virat Kohli", "Elon Musk Biography", "MS Dhoni Greatness"
-    2. person_skill      — "Virat Kohli Batting Technique", "Dhoni Finishing Ability"
-    3. why_topic         — "Why diets fail"
-    4. how_topic         — "How cricket was born"
-    5. concept_topic     — everything else
-    """
-    lo = topic.lower()
-    words = topic.strip().split()
-
-    # Hardcoded stopwords for leading question words
-    lead_stopwords = {"why", "how", "what", "when", "where", "is", "are", "the", "a",
-                      "an", "tell", "me", "about", "us", "explain", "describe"}
-
-    # Skill/technique keywords — presence means person_skill, not biography
-    skill_keywords = {
-        "technique", "batting", "bowling", "fielding", "strategy", "weakness",
-        "strength", "analysis", "mechanics", "style", "method", "approach",
-        "skills", "ability", "performance", "record", "stats"
-    }
-
-    # Biography trigger words — presence after a person name means biography
-    biography_triggers = {
-        "biography", "bio", "greatness", "legend", "life", "story", "career",
-        "journey", "profile", "aura", "prime", "rise", "legacy", "impact"
-    }
-
-    # Known non-person subjects — topics that look like proper nouns but aren't people
-    non_person_subjects = {
-        "hinduism", "buddhism", "islam", "christianity", "sikhism", "jainism",
-        "cricket", "football", "basketball", "tennis", "rugby", "baseball",
-        "india", "australia", "england", "pakistan", "america", "china",
-        "universe", "evolution", "democracy", "capitalism", "communism",
-    }
-
-    # ── Pattern 1: Explicit biography lead phrases ────────────────────────────
-    if lo.startswith(("tell me about ", "who is ", "about ", "explain ")):
-        for lead in ("tell me about ", "who is ", "about ", "explain "):
-            if lo.startswith(lead):
-                subject = topic[len(lead):].strip().rstrip("?. ")
-                subject_lo = subject.lower()
-                # If subject is a known non-person → concept_topic
-                if any(np in subject_lo for np in non_person_subjects):
-                    return "concept_topic", [subject]
-                return "person_biography", [subject]
-
-    # ── Pattern 2: Proper name detection ─────────────────────────────────────
-    # Collect leading capitalized words that look like a person's name
-    # Stop at the first non-capitalized word (or stopword)
-    name_words = []
-    for w in words:
-        clean = w.rstrip(".,?!")
-        if clean and clean[0].isupper() and clean.lower() not in lead_stopwords:
-            name_words.append(clean)
-        else:
-            break
-
-    if name_words:
-        # Cap name extraction at 2 words — "Virat Kohli" not "Virat Kohli Batting"
-        name_words = name_words[:2]
-        person = " ".join(name_words)
-        person_lo = person.lower()
-        remaining_words = words[len(name_words):]
-        remaining = " ".join(remaining_words).lower().strip().rstrip("?. ")
-
-        # If the person is actually a known non-person subject → concept_topic
-        if any(np in person_lo for np in non_person_subjects):
-            return "concept_topic", [topic]
-
-        # 1-2 proper name words followed by skill keywords → person_skill
-        if remaining and any(k in remaining for k in skill_keywords):
-            return "person_skill", [person, remaining]
-
-        # 1-2 proper name words followed by biography triggers → person_biography
-        if not remaining or any(t in remaining for t in biography_triggers):
-            # Only treat as biography if it's plausibly a person's name
-            # (at least one name word, not a known non-person subject)
-            if len(name_words) >= 1:
-                return "person_biography", [person]
-
-        # 2+ capitalized words with unknown remaining → person_biography
-        # (e.g. "Sachin Tendulkar Centuries" — still biography-ish)
-        if len(name_words) >= 2:
-            return "person_biography", [person]
-
-    # ── Pattern 3: Why / How ──────────────────────────────────────────────────
-    if lo.startswith("why "):
-        return "why_topic", [topic[4:].strip()]
-
-    if lo.startswith("how "):
-        return "how_topic", [topic[4:].strip()]
-
-    # ── Default ───────────────────────────────────────────────────────────────
-    return "concept_topic", [topic]
-
 
 def generate_sub_queries(topic: str, use_llm_fallback=None) -> tuple[list[str], str, bool]:
     """
-    Phase 1: Generate focused sub-queries for a topic.
+    Phase 1: One LLM call that does two things:
+      1. Understands what this topic *is* and what kind of blog it needs.
+      2. Generates 5 focused search queries tailored to that understanding.
+
+    No hardcoded templates. No keyword lists. The LLM decides the topic type,
+    research angle, and queries from scratch for every topic.
 
     Returns: (sub_queries, topic_type, freshness_required)
-
-    Template-based for ~70% of topics (fast).
-    LLM fallback for complex/unusual topics.
-    use_llm_fallback: callable(_invoke) passed in from agent.py to avoid circular import.
     """
-    topic_type, freshness_required = _classify_topic(topic)
-    pattern, args = _detect_pattern(topic)
-    template_list = _TEMPLATES.get(pattern, _TEMPLATES["concept_topic"])
+    if use_llm_fallback is None:
+        logger.warning("[PHASE1] No LLM available — using bare topic as single query")
+        return [topic], "general", False
 
-    queries = []
-    for tmpl in template_list:
-        try:
-            if pattern == "person_skill" and len(args) == 2:
-                q = tmpl.format(args[0], args[1])
-            else:
-                q = tmpl.format(args[0])
-            queries.append(q)
-        except (IndexError, KeyError):
-            queries.append(f"{topic} {tmpl.split('{')[0].strip()}")
-
-    # Topic fidelity guard — keep queries that overlap with either the original
-    # topic words OR the extracted subject (args[0] for biography/concept).
-    # This prevents the guard from wrongly filtering biography queries where
-    # the subject "Virat Kohli" was stripped from "Tell me about Virat Kohli".
-    base_stopwords = {"the", "a", "an", "is", "are", "of", "in", "on", "at", "to",
-                      "for", "tell", "me", "about", "us", "explain", "describe"}
-    topic_keywords = set(topic.lower().split()) - base_stopwords
-    # Also include keywords from the extracted subject
-    subject_keywords = set(args[0].lower().split()) - base_stopwords
-    all_keywords = topic_keywords | subject_keywords
-
-    filtered = []
-    for q in queries:
-        q_words = set(q.lower().split())
-        if q_words & all_keywords:
-            filtered.append(q)
-
-    # If template filtering left us with < 3 queries, use LLM fallback
-    if len(filtered) < 3 and use_llm_fallback:
-        logger.info(f"[PHASE1] Template gave {len(filtered)} queries — using LLM fallback")
-        filtered = _llm_sub_queries(topic, use_llm_fallback)
-
-    # Always cap at 5 queries
-    filtered = filtered[:5]
-    logger.info(
-        f"[PHASE1] topic_type={topic_type} | pattern={pattern} | "
-        f"queries={len(filtered)} | freshness={freshness_required}"
+    prompt = (
+        f'You are a research strategist for a blog writing system. '
+        f'A blog will be written about this topic:\n\n'
+        f'TOPIC: "{topic}"\n\n'
+        f'Your job has two parts:\n\n'
+        f'PART 1 — TOPIC UNDERSTANDING\n'
+        f'Analyze this topic and answer:\n'
+        f'- topic_type: What kind of topic is this? Choose ONE:\n'
+        f'    person_biography   (a real person — life, career, achievements)\n'
+        f'    person_skill       (a specific skill or technique of a named person)\n'
+        f'    historical_event   (a past event, origin story, or how something began)\n'
+        f'    concept_explainer  (an idea, philosophy, religion, movement, or system)\n'
+        f'    sports_analysis    (a team, era, league, or sports trend — not a person)\n'
+        f'    science_health     (science, biology, medicine, nutrition, psychology)\n'
+        f'    business_tech      (companies, startups, AI, economics, products)\n'
+        f'    culture_society    (food, lifestyle, travel, social trends, pop culture)\n'
+        f'    opinion_why        (why something happens, fails, or matters)\n'
+        f'    other              (anything that does not fit above)\n'
+        f'- freshness_required: true if the topic needs recent/current sources '
+        f'(live stats, news, current events), false for evergreen topics\n'
+        f'- blog_angle: One sentence describing what this blog should FOCUS ON '
+        f'to be most interesting and useful for a reader\n\n'
+        f'PART 2 — SEARCH QUERIES\n'
+        f'Generate exactly 5 search queries to find the best sources for this blog.\n'
+        f'Each query must target a DIFFERENT angle of the topic.\n'
+        f'Queries must be specific, keyword-dense (5-8 words), directly about the topic.\n\n'
+        f'Return ONLY this JSON (no markdown, no explanation):\n'
+        f'{{\n'
+        f'  "topic_type": "...",\n'
+        f'  "freshness_required": false,\n'
+        f'  "blog_angle": "...",\n'
+        f'  "queries": [\n'
+        f'    "query 1",\n'
+        f'    "query 2",\n'
+        f'    "query 3",\n'
+        f'    "query 4",\n'
+        f'    "query 5"\n'
+        f'  ]\n'
+        f'}}'
     )
-    logger.info(f"[PHASE1] Done in 0.00s | type={topic_type} | queries={filtered}")
-    return filtered, topic_type, freshness_required
 
-
-def _llm_sub_queries(topic: str, invoke_fn) -> list[str]:
-    """LLM fallback for unusual topics — generates 5 search queries."""
-    # Determine query angle based on detected pattern
-    pattern, args = _detect_pattern(topic)
-    if pattern == "person_biography":
-        angle_hint = "biography, career, records, achievements, legacy, personality"
-    elif pattern == "person_skill":
-        angle_hint = "mechanics, technique, data/stats, expert analysis, evolution"
-    elif pattern == "why_topic":
-        angle_hint = "causes, evidence, expert opinion, surprising facts, solutions"
-    elif pattern == "how_topic":
-        angle_hint = "steps, science, common mistakes, expert tips, outcomes"
-    else:
-        angle_hint = "overview, data/stats, real examples, expert views, history"
-
-    prompt = f"""
-You are a search engine expert. Given this blog topic, generate exactly 5 focused search queries.
-
-Topic: "{topic}"
-Query angles to cover: {angle_hint}
-
-Rules:
-- Each query must be directly about the topic — no drift
-- Each query targets a different angle from the list above
-- Keep each query short and keyword-dense (5-8 words max)
-- Do NOT include the word "blog" or "article" in queries
-- Return only the 5 queries, one per line, no numbering, no explanation
-
-Return 5 queries now:
-"""
     try:
-        raw = invoke_fn(prompt, temperature=0.2)
-        queries = [line.strip() for line in raw.strip().split("\n") if line.strip()]
-        # Fidelity: keep queries containing subject keywords
-        subject_words = set(args[0].lower().split()) - {"the", "a", "an", "is", "are", "of"}
-        topic_words = set(topic.lower().split()) - {"the", "a", "an", "is", "are", "of",
-                                                     "tell", "me", "about", "us"}
-        all_words = subject_words | topic_words
-        return [q for q in queries if any(w in q.lower() for w in all_words)][:5]
+        raw = use_llm_fallback(prompt, temperature=0.2)
+
+        # Strip markdown code fences if present
+        raw = raw.strip()
+        if raw.startswith("```"):
+            parts = raw.split("```")
+            raw = parts[1] if len(parts) > 1 else raw
+            if raw.startswith("json"):
+                raw = raw[4:]
+        raw = raw.strip()
+
+        import json as _json
+        data = _json.loads(raw)
+
+        topic_type         = str(data.get("topic_type", "other")).strip()
+        freshness_required = bool(data.get("freshness_required", False))
+        blog_angle         = str(data.get("blog_angle", "")).strip()
+        queries            = [str(q).strip() for q in data.get("queries", []) if str(q).strip()]
+
+        if len(queries) < 3:
+            raise ValueError(f"Only {len(queries)} queries returned")
+
+        queries = queries[:5]
+
+        logger.info(
+            f"[PHASE1] topic_type={topic_type} | freshness={freshness_required} | "
+            f"queries={len(queries)}"
+        )
+        logger.info(f"[PHASE1] angle: {blog_angle[:120]}")
+        logger.info(f"[PHASE1] Done in 0.00s | type={topic_type} | queries={queries}")
+
+        return queries, topic_type, freshness_required
+
     except Exception as e:
-        logger.warning(f"[PHASE1] LLM fallback failed: {e}")
-        return [topic, f"{topic} statistics data", f"{topic} expert analysis"]
+        logger.warning(f"[PHASE1] LLM topic intelligence failed: {e} — using fallback queries")
+        fallback = [
+            topic,
+            f"{topic} statistics data facts",
+            f"{topic} expert analysis overview",
+        ]
+        return fallback, "other", False
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

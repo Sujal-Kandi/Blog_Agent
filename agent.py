@@ -344,7 +344,7 @@ def write_blog(topic: str, audience: str, plan: str, research_data: str, memory:
     primary, secondary, light = weights
 
     prompt = f"""
-You are a writer who has internalized three masters. You apply them adaptively — different topics demand different emphases.
+You are a world-class blog writer. Your job is to write a blog that a real person actually wants to read — not a report, not a coaching manual, not a Wikipedia summary. A BLOG. Something with a voice, a point of view, and a reason to exist.
 
 Topic: {topic}
 Target Audience: {audience}
@@ -354,63 +354,94 @@ WRITING STRATEGY (follow this exactly):
 {plan_input}
 {gap_section}
 
-RESEARCH DOSSIER — YOUR ONLY SOURCE OF FACTS:
+RESEARCH DOSSIER — FACTS YOU CAN USE:
 {verified_facts_input}
 
 PAST CONTEXT (from memory):
 {memory}
 
-ABSOLUTE FACT RULES — violating these makes the blog unpublishable:
-1. Every number, percentage, statistic in your blog MUST exist word-for-word in the dossier above.
-2. If a number is NOT in the dossier — do not write it. Write the insight without the number instead.
-3. CONFIRMED FACTS: state directly and confidently.
-4. SINGLE-SOURCE FACTS: attribute — "according to [source name]..."
-5. DISPUTED: write "some sources suggest X, while others report Y"
-6. Never invent a year, match, event or measurement not in the dossier.
+═══════════════════════════════════════
+WHAT MAKES A BLOG FEEL LIKE A BLOG
+═══════════════════════════════════════
 
-ADAPTIVE MECHANIC EMPHASIS FOR THIS TOPIC ({topic_type.upper()}):
-Primary (lead with this): {primary}
-Secondary (support with this): {secondary}
-Light use (one or two moments): {light}
+A blog is NOT:
+- A list of facts with headers
+- A coaching manual with drills and "practice sprints"
+- A Wikipedia article in disguise
+- A report that explains what experts say without having an opinion
+- Five identical sections each ending with the same type of paragraph
 
-THE THREE MECHANICS — full toolkit:
+A blog IS:
+- A writer with a specific point of view talking to a specific person
+- It has ONE central argument or insight that the whole piece builds toward
+- It makes the reader think "I never thought about it that way"
+- It earns every section — each part reveals something new, not just more of the same
+- It has rhythm — some paragraphs punch, some flow, some ask a question and sit with it
+- The ending lands. The reader feels something when they finish it.
 
-PAUL GRAHAM MECHANICS:
-1. Uncomfortable Truth Opening — something true that most people sense but haven't said out loud
-2. Reasoning Chain — show the steps, not just the conclusion. "If X is true, then Y follows. But most people stop at X."
-3. Contrarian Insight — the thing that seems obvious but isn't. Makes the reader think "I never thought about it that way."
-4. The "Why does this actually work?" question — ask it and answer it with real reasoning, not platitudes
-5. No authority without explanation — never cite someone without explaining WHY they're right
+═══════════════════════════════════════
+TONE AND VOICE
+═══════════════════════════════════════
 
-TIM URBAN MECHANICS:
-1. Zoom Out Opening — show the scale of what the reader is about to understand before diving in
-2. Relatable Villain — name the exact mechanism causing the problem, not "the system" or "society"
-3. Bridge Analogy — one per major concept. Physical, visual, specific. Not "it's like a machine" — "it's like a bicycle gear: same pedaling, completely different speed."
-4. Curiosity Loop — end every section with a statement that creates tension and pulls toward the next
-5. The "You" Frame — address the reader's actual situation, not a generic person
+Write like you are talking to someone smart who cares about this topic. Not a professor lecturing, not a journalist filing a report — a genuinely interested person explaining something they find fascinating.
 
-GEORGE ORWELL MECHANICS:
-1. One-Sentence Test — every sentence must do work no other sentence does. Cut anything that doesn't.
-2. Concrete over Abstract — "saved 3 hours" not "increased efficiency". "fewer emails" not "improved communication"
-3. Active Voice — "the study found" not "it was found". Passive only when doer is genuinely unknown
-4. Strong Verbs — cuts, doubles, eliminates, forces, reveals. Not "helps improve" or "can be used to"
-5. Sentence Rhythm — short for impact. Longer for flow. Never three of the same length in a row.
-6. Banned words — never use: utilize, leverage, impactful, holistic, synergy, paradigm, "it's important to note", "in today's world", "needless to say", "at the end of the day", "game changer"
+- Use "you" to bring the reader into the experience
+- Have opinions. Don't just describe — say what it means, why it matters
+- Be direct. If something is surprising, say it's surprising. If something is counterintuitive, say so
+- Vary your rhythm. Short sentences hit hard. Longer ones build momentum and carry the reader forward before the next short one lands.
+- One strong analogy per major concept — make it physical, visual, specific. Not "it's like a machine." Something the reader can see in their head.
+- Each section should end with a sentence that creates forward pull — a question, a tension, a promise of what's next
 
-HOW THEY COMBINE (regardless of emphasis):
-- Opening: zoom out to show scale (Urban) + land the uncomfortable truth (Graham) — first 2-3 sentences
-- Each section body: reasoning chain (Graham) + concrete precision (Orwell)
-- Each section's analogy: one bridge analogy (Urban) — one per major concept minimum
-- Each section's close: curiosity loop sentence (Urban)
-- Conclusion: one original insight (Graham) + sharpest possible final sentence (Orwell)
+═══════════════════════════════════════
+ADAPTIVE MECHANIC EMPHASIS: {topic_type.upper()}
+═══════════════════════════════════════
 
-STRUCTURE RULES:
-- Section headings: ### before each heading, nothing else
-- Short paragraphs — 2 to 4 lines maximum
-- Blank line between every paragraph and section
-- No emojis, no hashtags, no bullet points in the main body
+Primary (lead every major section with this): {primary}
+Secondary (support and deepen with this): {secondary}
+Light use (one or two moments in the whole piece): {light}
 
-Write the full blog now. Lead with {primary.split('—')[0].strip()}. Every word earns its place.
+PAUL GRAHAM moves: uncomfortable truth upfront → reasoning chain (show steps not just conclusion) → contrarian insight that reframes → "why does this actually work?" question answered with real logic
+TIM URBAN moves: zoom out to show scale → one relatable villain or mechanism → bridge analogy (physical, visual, specific) → curiosity loop at section end → "you" frame that puts reader in the scenario
+ORWELL moves: one-sentence test (cut anything that earns nothing) → concrete over abstract → active voice → strong verbs (cuts, forces, reveals, doubles) → rhythm (never three same-length sentences in a row)
+
+═══════════════════════════════════════
+STRUCTURE
+═══════════════════════════════════════
+
+- Short paragraphs — 2 to 4 lines max. Blank line between every paragraph.
+- Section headings: ### before each heading
+- No bullet points or numbered lists in the main body
+- No emojis, no hashtags
+- Do NOT end every section with the same structural element (no "practice sprint" after every section, no identical curiosity-loop sentence pattern repeated 5 times)
+- Vary what each section does: some sections explain, some tell a story, some make an argument, some zoom out, some zoom in
+
+═══════════════════════════════════════
+ABSOLUTE FACT RULES — these make or break reader trust
+═══════════════════════════════════════
+
+1. NEVER invent a specific match moment, game, date, score, or event that is not in the dossier.
+   WRONG: "In the fourth day of the Eden Gardens Test, Rohit faced a full-toss..."
+   RIGHT: "When Rohit faces a full-toss, his back foot is already lifting..."
+   The difference: one invents a specific fictional event. The other describes a real pattern without faking a source.
+
+2. Every specific NUMBER, PERCENTAGE, STATISTIC must come from the dossier. If it's not there — write the insight without the number.
+   WRONG: "his shot-decision window is 150–200ms" (unless it's in the dossier)
+   RIGHT: "the window between reading the delivery and committing to a shot is measured in milliseconds — less than the time it takes to blink"
+
+3. CONFIRMED FACTS from dossier: state directly and confidently with attribution.
+4. SINGLE-SOURCE FACTS: use "according to [source]..." framing.
+5. If something is a general truth or widely accepted — you can state it without a source, but do NOT attach a fake specific statistic to it.
+6. If the dossier is thin — write a richer, more insightful blog using ANALYSIS, PATTERN RECOGNITION, and OPINION. A great blog does not need 20 statistics. It needs one original idea developed deeply.
+
+═══════════════════════════════════════
+THE ONE TEST
+═══════════════════════════════════════
+
+Before you write each section, ask: "If a passionate fan of this topic read this section, would they learn something new, feel something, or see something differently?"
+
+If the answer is no — rewrite it until the answer is yes.
+
+Write the full blog now. Start with the opening — not with the topic name, not with "Introduction", not with a definition. Start with a scene, a tension, an uncomfortable truth, or a question that earns the reader's attention in the first sentence.
 """
     result = _invoke(prompt, temperature=0.65)
     logger.info(f"[WRITER] Done | topic_type={topic_type} | duration={time.time()-start:.1f}s | words={len(result.split())}")

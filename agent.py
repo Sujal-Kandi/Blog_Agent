@@ -761,8 +761,11 @@ Sentences to fix:
 {sentences_block}
 
 For each sentence:
-- Remove just the number/statistic that is in the unverified list
+- Remove the unverified number
 - Keep the rest of the sentence intact and natural
+- If removing the number makes the sentence grammatically broken or meaningless
+  (e.g. "the innings lasted balls" or "stride never exceeded seconds"),
+  rewrite the whole sentence WITHOUT the number to preserve meaning
 - Do NOT add any new facts
 - Return: original sentence → fixed sentence (one per line)
 
@@ -889,28 +892,50 @@ Original Blog:
     return result
 def score_blog(blog: str, topic: str, seo: dict) -> dict:
     prompt = f"""
-You are a professional blog quality analyst. Score objectively. Be honest, not generous.
+You are scoring a blog the way a real editor and reader would — not a checklist, actually reading it.
 
 Topic: {topic}
 
+Score each from 1 to 10. Be honest, not generous. A 7 means genuinely good. A 9 means you'd be proud to publish it. A 5 means it needs real work.
+
+CRITERION 1 — DOES IT FEEL HUMAN?
+Does it read like a person with a point of view, or like content generated to fill space?
+Score: X/10
+Reason: (one specific sentence)
+
+CRITERION 2 — OPENING STRENGTH
+First 3 sentences only. Would a smart reader stop scrolling?
+Not "is it grammatically correct" — does it earn attention?
+Score: X/10
+Reason: (quote the opening or name what kills it)
+
+CRITERION 3 — ONE ORIGINAL IDEA
+Is there a single insight in this blog that the reader couldn't have got from Wikipedia or the first Google result?
+Something that makes them think "I never thought about it that way"?
+Score: X/10
+Reason: (quote the insight or say it's missing)
+
+CRITERION 4 — ENDING QUALITY
+Does the last paragraph say something NEW, or summarise what was already said?
+Does the reader feel something when they finish?
+Score: X/10
+Reason: (quote the ending or describe the problem)
+
+CRITERION 5 — WOULD YOU SHARE IT?
+If a friend who cares about this topic sent you this blog, would you forward it to someone else?
+Score: X/10 (10 = definitely yes, 5 = maybe, 1 = no)
+Reason: (one honest sentence)
+
+Overall Score: (average of the 5, one decimal place)
+Verdict: (one sharp sentence — what this blog does well and the single thing that would push it higher)
+
 Blog:
-{blog}
+{blog[:4_000]}
 
 SEO Metadata:
 {seo}
 
-Score each from 1 to 10 with a one-line reason:
-
-Readability: (short clear sentences? easy to follow?)
-Hook Strength: (does the opening grab immediately with something specific?)
-Content Depth: (real data, named examples, specific facts?)
-SEO Strength: (focus keyword used naturally? meta title compelling?)
-Conclusion Quality: (memorable and specific, not a cliché?)
-
-Overall Score: (average of the 5, out of 10)
-Verdict: (one sharp sentence — what it does well and what would push it higher)
-
-Return each on its own line with label followed by colon. Nothing else.
+Return each criterion on its own line with label followed by colon. Nothing else.
 """
     raw = _invoke(prompt, temperature=0.0)
     scores = {}

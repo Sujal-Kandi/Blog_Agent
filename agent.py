@@ -657,6 +657,12 @@ STRUCTURE
 - No emojis, no hashtags
 - Vary what sections DO: some explain, some tell a story, some argue, some zoom out, some zoom in
 - Do NOT repeat the same structural element at the end of every section
+- ANTI-SIGNPOST RULE: Never open a section by announcing what it is about to cover.
+  WRONG: "If speed and yorkers are the tools, tactical deployment is the blueprint."
+  WRONG: "Now that we understand X, let's look at Y."
+  WRONG: "This section explores the role of..."
+  RIGHT: Start mid-argument. Drop a fact, a scene, a claim, or a contradiction — then build from it.
+  The reader should feel the section start, not be told it is starting.
 
 ═══════════════════════════════════════
 FACT RULES

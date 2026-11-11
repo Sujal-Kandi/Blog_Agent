@@ -452,7 +452,7 @@ def generate_ending(blog: str, topic: str, insights: str) -> str:
     insights_input = insights[:800] if insights else ""
 
     prompt = f"""
-You are writing the final paragraph of a blog about: "{topic}"
+You are writing the concluding section of a blog about: "{topic}"
 
 CORE INSIGHTS:
 {insights_input}
@@ -460,13 +460,27 @@ CORE INSIGHTS:
 CURRENT ENDING (last section of blog):
 {blog_tail}
 
-Write 3 candidate endings (labeled A, B, C). Each: 2-4 sentences, says something NEW, lands hard.
-A = REFRAME: shows the topic means something bigger than assumed
-B = CHALLENGE: asks reader to do or think something specific right now
-C = HARD TRUTH: uncomfortable conclusion that follows from the blog
+Write 3 candidate concluding sections (labeled A, B, C).
+
+RULES FOR EVERY CANDIDATE:
+- Minimum 3 sentences, ideally 4-5. Never fewer.
+- Must say something NEW — not summarise what was already said
+- No calls to action ("pick a race weekend", "try this today", "share on social")
+- No motivational fluff ("the journey begins", "the future is bright")
+- Must make the reader feel something or think differently
+- The final sentence must be a statement — not a question
+
+A = REFRAME: zoom out and show the topic means something much larger than assumed.
+    End with a single unforgettable line that reframes everything.
+
+B = HARD TRUTH: name the uncomfortable thing the blog has been building toward.
+    Something true that most people won't say out loud. Land it cleanly.
+
+C = CIRCLE BACK: return to the opening image or idea, but with new meaning now that
+    the reader has read the whole blog. Show what has changed.
 
 After the 3 options write exactly this line: ---CHOSEN---
-Then write ONLY the text of the best ending. No labels. No "FINAL TEXT:". Just the sentences.
+Then write ONLY the full text of the best ending. No labels. No "FINAL TEXT:". Just the paragraphs.
 """
     result = _invoke(prompt, temperature=0.6)
 
@@ -885,7 +899,9 @@ You are scoring a blog the way a real editor and reader would — not a checklis
 
 Topic: {topic}
 
-Score each from 1 to 10. Be honest, not generous. A 7 means genuinely good. A 9 means you'd be proud to publish it. A 5 means it needs real work.
+Score each from 1 to 10. Be fair and calibrated.
+Anchors: 8 = genuinely good, publishable as-is. 7 = solid, minor improvements needed. 6 = decent but one clear weakness. 5 = needs significant work. 9+ = exceptional.
+Most competent AI-assisted blogs that are well-researched and readable should score 6.5-8.
 
 CRITERION 1 — DOES IT FEEL HUMAN?
 Does it read like a person with a point of view, or like content generated to fill space?
@@ -912,7 +928,7 @@ Reason: (quote the ending or describe the problem)
 
 CRITERION 5 — WOULD YOU SHARE IT?
 If a friend who cares about this topic sent you this blog, would you forward it to someone else?
-Score: X/10 (10 = definitely yes, 5 = maybe, 1 = no)
+Score: X/10 (10 = definitely yes, 7 = probably yes, 5 = maybe, 1 = no)
 Reason: (one honest sentence)
 
 Overall Score: (average of the 5, one decimal place)
@@ -1011,6 +1027,38 @@ Key Takeaway: [the sentence]
         elif current_section == "key_takeaway":
             if not extras["key_takeaway"]:
                 extras["key_takeaway"] = stripped.strip('"').strip("'").strip()
+
+    # ── Fallback: retry with a simpler prompt if TL;DR is still empty ────────
+    # This handles cases where the LLM returned a non-standard format
+    if not extras["tldr"]:
+        logger.warning("[EXTRAS] TL;DR empty after parse — retrying with simpler prompt")
+        try:
+            fallback_raw = _invoke(f"""
+Summarize this blog about "{topic}" in exactly 3 bullet points.
+Each bullet must be one sharp, specific sentence.
+Return ONLY the 3 lines, each starting with "- ".
+
+Blog:
+{blog[:3_000]}
+""", temperature=0.3)
+            for line in fallback_raw.strip().split("\n"):
+                line = line.strip()
+                if line.startswith("- "):
+                    extras["tldr"].append(line[2:].strip())
+                elif line.startswith("* "):
+                    extras["tldr"].append(line[2:].strip())
+            logger.info(f"[EXTRAS] Fallback TL;DR produced {len(extras['tldr'])} bullets")
+        except Exception as e:
+            logger.warning(f"[EXTRAS] Fallback TL;DR failed: {e}")
+
+    # ── Fallback: pull quote if still empty ───────────────────────────────────
+    if not extras["pull_quote"]:
+        logger.warning("[EXTRAS] Pull quote empty — using last sentence of blog as fallback")
+        import re as _re
+        sentences = _re.split(r'(?<=[.!?])\s+', blog.strip())
+        clean = [s.strip() for s in sentences if len(s.strip()) > 40 and not s.strip().startswith("#")]
+        if clean:
+            extras["pull_quote"] = clean[-1]
 
     return extras
 

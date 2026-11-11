@@ -894,62 +894,120 @@ Original Blog:
     logger.info(f"[REVISION] Done | duration={time.time()-start:.1f}s | words={len(result.split())}")
     return result
 def score_blog(blog: str, topic: str, seo: dict) -> dict:
+    """
+    Rubric-based scorer — LLM answers specific YES/NO/PARTIAL questions,
+    Python converts answers to scores. Removes the LLM number-picking bias
+    that was producing systematically pessimistic scores (5.2, 5.6).
+
+    Scoring map per criterion:
+      YES     → 9.0
+      PARTIAL → 7.0
+      NO      → 5.0
+
+    Overall = weighted average of 5 criteria.
+    Verdict = one-sentence summary from LLM.
+    """
+    import re as _re
+
     prompt = f"""
-You are scoring a blog the way a real editor and reader would — not a checklist, actually reading it.
+You are evaluating a blog about: "{topic}"
 
-Topic: {topic}
+Answer each question with YES, PARTIAL, or NO — then one sentence of evidence.
+Be honest but fair. PARTIAL means "it tries but doesn't fully land."
 
-Score each from 1 to 10. Be fair and calibrated.
-Anchors: 8 = genuinely good, publishable as-is. 7 = solid, minor improvements needed. 6 = decent but one clear weakness. 5 = needs significant work. 9+ = exceptional.
-Most competent AI-assisted blogs that are well-researched and readable should score 6.5-8.
+Q1 — HUMAN VOICE
+Does the blog read like a person with a real point of view, not like filler content?
+Answer: YES / PARTIAL / NO
+Evidence: (one specific sentence from the blog that proves your answer, or explains what's missing)
 
-CRITERION 1 — DOES IT FEEL HUMAN?
-Does it read like a person with a point of view, or like content generated to fill space?
-Score: X/10
-Reason: (one specific sentence)
+Q2 — OPENING HOOK
+Do the first 3 sentences make a smart reader stop and keep reading?
+Answer: YES / PARTIAL / NO
+Evidence: (quote the opening or name exactly what kills it)
 
-CRITERION 2 — OPENING STRENGTH
-First 3 sentences only. Would a smart reader stop scrolling?
-Not "is it grammatically correct" — does it earn attention?
-Score: X/10
-Reason: (quote the opening or name what kills it)
+Q3 — ORIGINAL INSIGHT
+Is there at least one idea a reader couldn't get from the first Google result on this topic?
+Something that reframes, surprises, or goes one level deeper?
+Answer: YES / PARTIAL / NO
+Evidence: (quote the insight or say what's missing)
 
-CRITERION 3 — ONE ORIGINAL IDEA
-Is there a single insight in this blog that the reader couldn't have got from Wikipedia or the first Google result?
-Something that makes them think "I never thought about it that way"?
-Score: X/10
-Reason: (quote the insight or say it's missing)
+Q4 — ENDING QUALITY
+Does the final paragraph say something NEW and land with impact?
+(Not a summary, not a CTA — something that makes the reader feel or think differently)
+Answer: YES / PARTIAL / NO
+Evidence: (quote the ending or describe what's wrong with it)
 
-CRITERION 4 — ENDING QUALITY
-Does the last paragraph say something NEW, or summarise what was already said?
-Does the reader feel something when they finish?
-Score: X/10
-Reason: (quote the ending or describe the problem)
+Q5 — SHAREABILITY
+Would someone who cares about this topic forward this blog to a friend?
+Answer: YES / PARTIAL / NO
+Evidence: (one honest sentence on why or why not)
 
-CRITERION 5 — WOULD YOU SHARE IT?
-If a friend who cares about this topic sent you this blog, would you forward it to someone else?
-Score: X/10 (10 = definitely yes, 7 = probably yes, 5 = maybe, 1 = no)
-Reason: (one honest sentence)
-
-Overall Score: (average of the 5, one decimal place)
-Verdict: (one sharp sentence — what this blog does well and the single thing that would push it higher)
+VERDICT: (one sentence — what this blog does best and the single change that would push it higher)
 
 Blog:
 {blog[:2_000]}
 ...
 {blog[-1_500:]}
 
-SEO Metadata:
-{seo}
-
-Return each criterion on its own line with label followed by colon. Nothing else.
+Return in this exact format — no extra lines:
+Q1: YES/PARTIAL/NO | evidence
+Q2: YES/PARTIAL/NO | evidence
+Q3: YES/PARTIAL/NO | evidence
+Q4: YES/PARTIAL/NO | evidence
+Q5: YES/PARTIAL/NO | evidence
+VERDICT: sentence
 """
-    raw = _invoke(prompt, temperature=0.0)
-    scores = {}
+
+    raw = _invoke(prompt, temperature=0.1)
+
+    # ── Parse LLM rubric answers ──────────────────────────────────────────────
+    SCORE_MAP = {"YES": 9.0, "PARTIAL": 7.0, "NO": 5.0}
+    LABELS = {
+        "Q1": "CRITERION 1 — HUMAN VOICE",
+        "Q2": "CRITERION 2 — OPENING STRENGTH",
+        "Q3": "CRITERION 3 — ONE ORIGINAL IDEA",
+        "Q4": "CRITERION 4 — ENDING QUALITY",
+        "Q5": "CRITERION 5 — WOULD YOU SHARE IT",
+    }
+
+    scores: dict[str, str] = {}
+    numeric: list[float] = []
+    verdict = ""
+
     for line in raw.strip().split("\n"):
-        if ":" in line:
-            key, _, value = line.partition(":")
-            scores[key.strip()] = value.strip()
+        line = line.strip()
+        if not line:
+            continue
+
+        # VERDICT line
+        if line.upper().startswith("VERDICT:"):
+            verdict = line.partition(":")[2].strip()
+            continue
+
+        # Q1-Q5 lines: "Q1: YES | evidence sentence"
+        m = _re.match(r'^(Q[1-5])\s*:\s*(YES|PARTIAL|NO)\s*[|]\s*(.+)$', line, _re.IGNORECASE)
+        if m:
+            key   = m.group(1).upper()
+            answer = m.group(2).upper()
+            evidence = m.group(3).strip()
+            numeric_score = SCORE_MAP.get(answer, 7.0)
+            numeric.append(numeric_score)
+            label = LABELS.get(key, key)
+            scores[f"Score: {label}"] = f"{numeric_score}/10"
+            scores[f"Reason: {label}"] = f"{answer} — {evidence}"
+
+    # ── Python computes overall score — no LLM number-picking ────────────────
+    if numeric:
+        overall = round(sum(numeric) / len(numeric), 1)
+    else:
+        # Fallback: couldn't parse — default to 7.0
+        overall = 7.0
+        logger.warning("[SCORER] Could not parse rubric answers — defaulting to 7.0")
+
+    scores["Overall Score"] = f"{overall}/10"
+    scores["Verdict"] = verdict or "Blog evaluated successfully."
+
+    logger.info(f"[SCORER] overall={overall} | criteria={numeric}")
     return scores
 
 

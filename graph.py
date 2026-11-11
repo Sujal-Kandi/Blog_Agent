@@ -161,24 +161,36 @@ def node_ending(state: BlogState) -> dict:
         _log.warning("[ENDING] Empty result — keeping original ending")
         return {"final_blog": draft}
 
+    # Hard safety: strip any label artifacts that leaked through
+    # These patterns should NEVER appear in the final blog
+    label_pattern = _re.compile(
+        r'^(ENDING\s+[A-C]|CHOSEN ENDING|FINAL TEXT|OPTION\s+[A-C]|---CHOSEN---|REFRAME:|CHALLENGE:|HARD TRUTH:).*$',
+        _re.IGNORECASE | _re.MULTILINE
+    )
+    ending_clean = label_pattern.sub("", ending).strip()
+    # Collapse multiple blank lines left by stripping
+    ending_clean = _re.sub(r'\n{3,}', '\n\n', ending_clean).strip()
+
+    if not ending_clean:
+        _log.warning("[ENDING] Ending was all labels after stripping — keeping original")
+        return {"final_blog": draft}
+
     # Strategy: find the last ### section heading and replace everything after it
     # with the new ending. If no headings, replace last 2 paragraphs.
     headings = list(_re.finditer(r'^###\s+.+', draft, _re.MULTILINE))
     if headings:
         last_heading = headings[-1]
-        # Keep the last heading, replace its body with the new ending
         before_last_section = draft[:last_heading.start()]
         last_heading_text = last_heading.group(0)
-        new_final_blog = before_last_section + last_heading_text + "\n\n" + ending.strip()
+        new_final_blog = before_last_section + last_heading_text + "\n\n" + ending_clean
     else:
-        # No headings — replace last 2 paragraphs
         paragraphs = [p.strip() for p in draft.split("\n\n") if p.strip()]
         if len(paragraphs) > 2:
-            new_final_blog = "\n\n".join(paragraphs[:-2]) + "\n\n" + ending.strip()
+            new_final_blog = "\n\n".join(paragraphs[:-2]) + "\n\n" + ending_clean
         else:
-            new_final_blog = draft  # too short to safely replace
+            new_final_blog = draft
 
-    # Safety: don't let ending replacement shrink the blog more than 15%
+    # Safety: don't shrink the blog more than 15%
     if len(new_final_blog.split()) < len(draft.split()) * 0.85:
         _log.warning("[ENDING] Replacement too short — keeping original")
         return {"final_blog": draft}

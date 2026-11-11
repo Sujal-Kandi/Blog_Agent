@@ -413,16 +413,26 @@ REASON: [one sentence on why this one wins for this topic and audience]
 """
     result = _invoke(prompt, temperature=0.7)
 
-    # Extract just the chosen hook to pass to the writer
+    # Extract just the chosen hook — look for "CHOSEN HOOK:" line
     chosen = ""
     for line in result.split("\n"):
-        if line.strip().upper().startswith("CHOSEN HOOK:"):
-            chosen = line.split(":", 1)[1].strip().strip('"').strip("'")
+        stripped = line.strip()
+        if stripped.upper().startswith("CHOSEN HOOK:"):
+            chosen = stripped[len("CHOSEN HOOK:"):].strip().strip('"').strip("'")
             break
 
+    # Fallback: take the last short line that doesn't look like a label
     if not chosen:
-        # Fallback: return full output so writer can use any of the 5
-        chosen = result
+        skip_starts = ("type ", "chosen", "reason", "---", "hook ")
+        candidates = [
+            l.strip().strip('"').strip("'")
+            for l in result.split("\n")
+            if l.strip()
+            and len(l.strip()) > 15
+            and len(l.strip()) < 200
+            and not any(l.strip().lower().startswith(s) for s in skip_starts)
+        ]
+        chosen = candidates[-1] if candidates else result[:200]
 
     logger.info(f"[HOOK] Done | hook='{chosen[:80]}' | duration={time.time()-start:.1f}s")
     return chosen
@@ -432,78 +442,57 @@ REASON: [one sentence on why this one wins for this topic and audience]
 def generate_ending(blog: str, topic: str, insights: str) -> str:
     """
     Ending Generator — runs after the draft is written, before citations.
-
-    The closing paragraph is the second hardest sentence to write.
-    Currently the writer wraps up generically — recycled summary, motivational cliché.
-    This node generates 3 candidate endings and picks the sharpest.
-    The blog's last sentence is what the reader carries with them.
+    Returns ONLY the clean final paragraph text — no labels, no metadata.
     """
     _check_cancelled()
     logger.info(f"[ENDING] Generating ending | topic='{topic[:60]}'")
     start = time.time()
 
-    # Give the ending generator the last 1000 chars of the blog for context
-    blog_tail    = blog[-1_500:]    if blog     else ""
+    blog_tail      = blog[-1_500:]  if blog     else ""
     insights_input = insights[:800] if insights else ""
 
     prompt = f"""
 You are writing the final paragraph of a blog about: "{topic}"
 
-CORE INSIGHTS THE BLOG WAS BUILT AROUND:
+CORE INSIGHTS:
 {insights_input}
 
-CURRENT BLOG ENDING (last section):
+CURRENT ENDING (last section of blog):
 {blog_tail}
 
-The current ending probably recaps what was already said. Replace it.
+Write 3 candidate endings (labeled A, B, C). Each: 2-4 sentences, says something NEW, lands hard.
+A = REFRAME: shows the topic means something bigger than assumed
+B = CHALLENGE: asks reader to do or think something specific right now
+C = HARD TRUTH: uncomfortable conclusion that follows from the blog
 
-Write 3 completely different candidate endings. Each must:
-- Be 2–4 sentences max
-- NOT summarise what was already said
-- Leave the reader with a NEW thought, a tension, a reframe, or a challenge
-- Land like a full stop — not trail off
-
-Types to try:
-ENDING A — THE REFRAME: takes the topic and shows it means something bigger than the reader assumed
-ENDING B — THE CHALLENGE: asks the reader to do or think something specific, right now
-ENDING C — THE HARD TRUTH: the uncomfortable conclusion that follows from everything the blog argued
-
-Then pick the ONE that fits this blog and topic best.
-
-Format:
-ENDING A — REFRAME:
-[2-4 sentences]
-
-ENDING B — CHALLENGE:
-[2-4 sentences]
-
-ENDING C — HARD TRUTH:
-[2-4 sentences]
-
-CHOSEN ENDING: [A, B, or C]
-FINAL TEXT:
-[the chosen ending, exactly as written above]
+After the 3 options write exactly this line: ---CHOSEN---
+Then write ONLY the text of the best ending. No labels. No "FINAL TEXT:". Just the sentences.
 """
     result = _invoke(prompt, temperature=0.6)
 
-    # Extract just the final text
-    final_text = ""
-    in_final = False
-    for line in result.split("\n"):
-        if line.strip().upper().startswith("FINAL TEXT:"):
-            in_final = True
-            after = line.split(":", 1)[1].strip()
-            if after:
-                final_text += after + "\n"
-            continue
-        if in_final:
-            final_text += line + "\n"
+    # Extract everything after ---CHOSEN---
+    if "---CHOSEN---" in result:
+        final_text = result.split("---CHOSEN---", 1)[1].strip()
+    else:
+        # Fallback: take the last clean paragraph that isn't a label
+        skip_starts = ("ending a", "ending b", "ending c", "chosen",
+                       "final text", "---", "option", "reframe", "challenge", "hard truth")
+        paragraphs = [p.strip() for p in result.split("\n\n") if p.strip()]
+        clean = [p for p in paragraphs
+                 if not any(p.lower().startswith(s) for s in skip_starts)]
+        final_text = clean[-1] if clean else ""
 
-    final_text = final_text.strip()
-    if not final_text:
-        final_text = result  # fallback: return everything
+    # Strip any remaining label lines that slipped through
+    skip_prefixes = ("ending a", "ending b", "ending c", "chosen ending",
+                     "final text", "---", "option a", "option b", "option c",
+                     "reframe:", "challenge:", "hard truth:")
+    clean_lines = [
+        line for line in final_text.split("\n")
+        if not any(line.strip().lower().startswith(p) for p in skip_prefixes)
+    ]
+    final_text = "\n".join(clean_lines).strip()
 
-    logger.info(f"[ENDING] Done | duration={time.time()-start:.1f}s")
+    logger.info(f"[ENDING] Done | chars={len(final_text)} | duration={time.time()-start:.1f}s")
     return final_text
 
 

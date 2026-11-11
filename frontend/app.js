@@ -129,16 +129,25 @@ function renderOutput(data) {
 
 function renderScore(scores) {
   const overall = parseFloat(scores['Overall Score']) || 0;
+
+  // Support both new human rubric keys and old keys as fallback
   const dims = [
-    { key: 'Readability', label: 'Read' },
-    { key: 'Hook Strength', label: 'Hook' },
-    { key: 'Content Depth', label: 'Depth' },
-    { key: 'SEO Strength', label: 'SEO' },
-    { key: 'Conclusion Quality', label: 'End' },
+    { keys: ['Does it feel human', 'Readability'],           label: 'Human' },
+    { keys: ['Opening strength', 'Hook Strength'],           label: 'Hook'  },
+    { keys: ['One original idea', 'Content Depth'],          label: 'Idea'  },
+    { keys: ['Ending quality', 'Conclusion Quality'],        label: 'End'   },
+    { keys: ['Would you share it', 'SEO Strength'],          label: 'Share' },
   ];
 
+  // For each dimension find the first key that exists in scores
   const barsHtml = dims.map(d => {
-    const val = parseFloat(scores[d.key]) || 0;
+    let raw = '';
+    for (const k of d.keys) {
+      const found = Object.keys(scores).find(sk => sk.toLowerCase().startsWith(k.toLowerCase()));
+      if (found) { raw = scores[found]; break; }
+    }
+    // Extract leading number from strings like "8/10 — reason" or "8"
+    const val = parseFloat((raw.match(/^(\d+(?:\.\d+)?)/) || [])[1]) || 0;
     const pct = (val / 10) * 100;
     return `
       <div class="score-bar-item">
@@ -149,12 +158,16 @@ function renderScore(scores) {
       </div>`;
   }).join('');
 
+  // Verdict: prefer 'Verdict', fall back to any key containing 'verdict'
+  const verdictKey = Object.keys(scores).find(k => k.toLowerCase().includes('verdict')) || 'Verdict';
+  const verdict = scores[verdictKey] || '';
+
   document.getElementById('scoreCard').innerHTML = `
     <div class="score-overall">
       <span class="score-number">${overall}</span>
       <span class="score-denom">/10</span>
     </div>
-    <p class="score-verdict">${scores['Verdict'] || ''}</p>
+    <p class="score-verdict">${verdict}</p>
     <div class="score-bars">${barsHtml}</div>
   `;
 }

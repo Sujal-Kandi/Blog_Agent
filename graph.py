@@ -259,6 +259,23 @@ def node_write(state: BlogState) -> BlogState:
             f"({len(draft.split())} words). Keeping best effort."
         )
 
+    # Strip any leaked internal labels from the final draft
+    # (hook generator REASON:, ending generator labels, etc.)
+    import re as _re2
+    label_patterns = [
+        r'^REASON\s*:.*$',
+        r'^TYPE\s+\d+\s*[—\-].*:.*$',
+        r'^CHOSEN\s+HOOK\s*:.*$',
+        r'^ENDING\s+[A-C]\s*[—\-].*:?\s*$',
+        r'^CHOSEN\s+ENDING\s*:.*$',
+        r'^FINAL\s+TEXT\s*:.*$',
+        r'^---CHOSEN---.*$',
+    ]
+    for pat in label_patterns:
+        draft = _re2.sub(pat, '', draft, flags=_re2.IGNORECASE | _re2.MULTILINE)
+    # Collapse multiple blank lines left by stripping
+    draft = _re2.sub(r'\n{3,}', '\n\n', draft).strip()
+
     state["draft"] = draft
     state["final_blog"] = draft
     state["iteration"] = 0

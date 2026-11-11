@@ -1089,25 +1089,39 @@ def generate_citations(blog: str, facts: str, topic: str, research_data: str = "
             if matched:
                 break
 
-    # ── Build Sources block ───────────────────────────────────────────────────
-    # Always show ALL sources — inline-cited ones first, then remaining.
-    # This ensures the Sources block is never missing even when inline
-    # matching fails completely (e.g. heavily paraphrased or broad topics).
+    # ── Build Sources block with sequential renumbering ───────────────────────
+    # Collect final display order: inline-cited sources first, then remaining.
+    # Then renumber everything 1, 2, 3... so the reader never sees gaps like
+    # [1], [5], [13], [18].
     seen_shown: set[str] = set()
-    sources_lines = ["Sources"]
+    ordered_sources: list[tuple[str, str, str]] = []  # (old_num, title, url)
 
     # Inline-cited sources first (preserving order)
     for num in used_citations:
         if num not in seen_shown and num in source_map:
             _, title, url = source_map[num]
-            sources_lines.append(f"[{num}] {title} — {url}")
+            ordered_sources.append((num, title, url))
             seen_shown.add(num)
 
     # Remaining sources that weren't matched inline
     for num, (_, title, url) in source_map.items():
         if num not in seen_shown:
-            sources_lines.append(f"[{num}] {title} — {url}")
+            ordered_sources.append((num, title, url))
             seen_shown.add(num)
+
+    # Build old_num → new_num mapping for renumbering inline markers
+    old_to_new: dict[str, str] = {}
+    sources_lines = ["Sources"]
+    for new_idx, (old_num, title, url) in enumerate(ordered_sources, 1):
+        old_to_new[old_num] = str(new_idx)
+        sources_lines.append(f"[{new_idx}] {title} — {url}")
+
+    # Replace inline markers in blog body: [5] → [2] etc.
+    # Sort by length descending to avoid partial replacements (e.g. [1] inside [13])
+    for old_num in sorted(old_to_new.keys(), key=lambda x: -len(x)):
+        new_num = old_to_new[old_num]
+        if old_num != new_num:
+            cited_blog = cited_blog.replace(f"[{old_num}]", f"[{new_num}]")
 
     logger.info(
         f"[CITATIONS] inline_markers={len(used_citations)} | "

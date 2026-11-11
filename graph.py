@@ -17,6 +17,9 @@ from agent import (
     research,
     analyze_competitor_gap,
     extract_facts,
+    extract_insights,
+    generate_opening_hook,
+    generate_ending,
     write_blog,
     audit_facts,
     critique_and_rewrite,
@@ -44,8 +47,13 @@ class BlogState(TypedDict):
     research_data: str
     facts: str
     memory: str
+
+    # new elite nodes
+    insights: str       # extracted non-obvious ideas from research
+    hook: str           # pre-generated opening sentence
+
     draft: str
-    critique: str       # editorial critic output — read by quality router
+    critique: str       # human rubric critic output — read by quality router
     final_blog: str
     seo: dict
     extras: dict
@@ -105,6 +113,81 @@ def node_retrieve_memory(state: BlogState) -> BlogState:
     return state
 
 @_guarded
+def node_insights(state: BlogState) -> dict:
+    """
+    Insight Extractor — finds the 3 most non-obvious ideas hiding in the research.
+    Gives the writer a real idea to build around instead of just facts.
+    Runs in parallel with node_hook after memory retrieval.
+    """
+    result = extract_insights(
+        state["topic"],
+        state["research_data"],
+        state["plan"],
+    )
+    return {"insights": result}
+
+
+@_guarded
+def node_hook(state: BlogState) -> dict:
+    """
+    Opening Hook Generator — produces 5 candidate opening sentences, picks sharpest.
+    The opening is the hardest sentence to write and the most important.
+    Runs in parallel with node_insights after memory retrieval.
+    """
+    result = generate_opening_hook(
+        state["topic"],
+        state.get("insights", ""),
+        state["plan"],
+        state["audience"],
+    )
+    return {"hook": result}
+
+
+@_guarded
+def node_ending(state: BlogState) -> dict:
+    """
+    Ending Generator — generates 3 candidate endings after the draft exists.
+    Replaces the writer's generic closing with a sharp, earned final paragraph.
+    Runs after audit_facts, before citations.
+    """
+    import re as _re
+    import logging as _logging
+    _log = _logging.getLogger("blog_agent")
+
+    draft = state["final_blog"]
+    ending = generate_ending(draft, state["topic"], state.get("insights", ""))
+
+    if not ending or not ending.strip():
+        _log.warning("[ENDING] Empty result — keeping original ending")
+        return {"final_blog": draft}
+
+    # Strategy: find the last ### section heading and replace everything after it
+    # with the new ending. If no headings, replace last 2 paragraphs.
+    headings = list(_re.finditer(r'^###\s+.+', draft, _re.MULTILINE))
+    if headings:
+        last_heading = headings[-1]
+        # Keep the last heading, replace its body with the new ending
+        before_last_section = draft[:last_heading.start()]
+        last_heading_text = last_heading.group(0)
+        new_final_blog = before_last_section + last_heading_text + "\n\n" + ending.strip()
+    else:
+        # No headings — replace last 2 paragraphs
+        paragraphs = [p.strip() for p in draft.split("\n\n") if p.strip()]
+        if len(paragraphs) > 2:
+            new_final_blog = "\n\n".join(paragraphs[:-2]) + "\n\n" + ending.strip()
+        else:
+            new_final_blog = draft  # too short to safely replace
+
+    # Safety: don't let ending replacement shrink the blog more than 15%
+    if len(new_final_blog.split()) < len(draft.split()) * 0.85:
+        _log.warning("[ENDING] Replacement too short — keeping original")
+        return {"final_blog": draft}
+
+    _log.info(f"[ENDING] Ending replaced successfully")
+    return {"final_blog": new_final_blog}
+
+
+@_guarded
 def node_write(state: BlogState) -> BlogState:
     import logging as _logging
     _log = _logging.getLogger("blog_agent")
@@ -146,6 +229,8 @@ def node_write(state: BlogState) -> BlogState:
             length=state["length"],
             gap=state.get("gap", ""),
             facts=facts if facts else research_data,
+            hook=state.get("hook", ""),
+            insights=state.get("insights", ""),
         )
         word_count = len(draft.split())
         if word_count >= threshold:
@@ -344,8 +429,12 @@ def node_save_memory(state: BlogState) -> BlogState:
 def quality_router(state: BlogState) -> str:
     """
     Quality Router — pure Python, zero LLM call.
-    Reads the Editorial Critic output to decide: pass or targeted revision.
+    Reads the Human Rubric Critic output to decide: pass or targeted revision.
     Max 1 revision pass to keep latency low.
+
+    New rubric format uses YES/NO answers:
+    - Pass: YES → done
+    - Pass: NO → revise (if iteration budget remains)
     """
     import re as _re
     critique = state.get("critique", "")
@@ -356,21 +445,18 @@ def quality_router(state: BlogState) -> str:
     if iteration >= max_iter:
         return "done"
 
-    # Explicit Pass: YES check — flexible regex, handles spacing/case variations
-    pass_match = _re.search(r'pass\s*[:\-]?\s*(yes|no)', critique, _re.IGNORECASE)
+    # Human rubric: "Pass: YES" or "Pass: NO"
+    pass_match = _re.search(r'\bpass\s*[:\-]\s*(yes|no)\b', critique, _re.IGNORECASE)
     if pass_match:
-        if pass_match.group(1).lower() == "yes":
-            return "done"
-        # Pass: NO — fall through to score check
+        return "done" if pass_match.group(1).lower() == "yes" else "revise"
 
-    # Score check — revise only if at least one dimension is below 7
+    # Fallback: old score format (Score: X/10) — keep backward compat
     scores = _re.findall(r'score:\s*(\d+)/10', critique, _re.IGNORECASE)
     if scores:
         low_scores = [int(s) for s in scores if int(s) < 7]
         return "revise" if low_scores else "done"
 
-    # Critic returned no parseable scores (failed or empty) — skip revision,
-    # don't waste a revision pass on garbage critique output
+    # Critic returned nothing parseable — skip revision
     return "done"
 
 
@@ -384,8 +470,11 @@ def build_graph():
     g.add_node("research",               node_research)
     g.add_node("extract_facts",          node_extract_facts)
     g.add_node("retrieve_memory",        node_retrieve_memory)
+    g.add_node("insights",               node_insights)       # NEW — extract non-obvious ideas
+    g.add_node("hook",                   node_hook)           # NEW — generate opening sentence
     g.add_node("write",                  node_write)
     g.add_node("audit_facts",            node_audit_facts)
+    g.add_node("ending",                 node_ending)         # NEW — replace closing paragraph
     g.add_node("critic",                 node_critique_rewrite)
     g.add_node("targeted_revision",      node_targeted_revision)
     g.add_node("post_revision_check",    node_post_revision_check)
@@ -397,13 +486,23 @@ def build_graph():
 
     g.set_entry_point("planner")
 
+    # Plan → gap → research → extract_facts → memory
     g.add_edge("planner",          "competitor_gap")
     g.add_edge("competitor_gap",   "research")
     g.add_edge("research",         "extract_facts")
     g.add_edge("extract_facts",    "retrieve_memory")
-    g.add_edge("retrieve_memory",  "write")
+
+    # After memory: insights + hook run IN PARALLEL (both need research + plan)
+    g.add_edge("retrieve_memory",  "insights")
+    g.add_edge("retrieve_memory",  "hook")
+
+    # Both must complete before writing starts
+    g.add_edge(["insights", "hook"], "write")
+
     g.add_edge("write",            "audit_facts")
-    g.add_edge("audit_facts",      "critic")
+    # After audit: ending generator sharpens the closing paragraph
+    g.add_edge("audit_facts",      "ending")
+    g.add_edge("ending",           "critic")
 
     # Quality Router — pure Python, zero LLM
     g.add_conditional_edges(
@@ -416,7 +515,7 @@ def build_graph():
     )
 
     # After targeted revision — safety check, then score
-    g.add_edge("targeted_revision", "post_revision_check")
+    g.add_edge("targeted_revision",   "post_revision_check")
     g.add_edge("post_revision_check", "score")
 
     g.add_edge("score",            "fix_cliches")
@@ -445,6 +544,8 @@ def run_blog_pipeline(topic: str, audience: str, length: str = "medium") -> dict
         "research_data":  "",
         "facts":          "",
         "memory":         "",
+        "insights":       "",
+        "hook":           "",
         "draft":          "",
         "critique":       "",
         "final_blog":     "",
@@ -452,7 +553,7 @@ def run_blog_pipeline(topic: str, audience: str, length: str = "medium") -> dict
         "extras":         {},
         "scores":         {},
         "iteration":      0,
-        "max_iterations": 1,  # max 1 revision for latency
+        "max_iterations": 1,
     }
 
     try:

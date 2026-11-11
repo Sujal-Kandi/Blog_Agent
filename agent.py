@@ -299,8 +299,216 @@ def extract_facts(topic: str, research_data: str) -> str:
     return research_data
 
 
+@traceable(name="insight_extractor")
+def extract_insights(topic: str, dossier: str, plan: str) -> str:
+    """
+    Insight Extractor — runs after research, before writing.
+
+    Asks: what are the 3 most interesting, non-obvious things hiding in this research?
+    Gives the writer a real IDEA to build the blog around instead of just facts.
+    This is the difference between a blog that has a reason to exist vs one that summarises.
+    """
+    _check_cancelled()
+    logger.info(f"[INSIGHTS] Starting | topic='{topic[:60]}'")
+    start = time.time()
+
+    dossier_input = dossier[:4_000] if dossier else ""
+    plan_input    = plan[:1_500]    if plan    else ""
+
+    prompt = f"""
+You are a brilliant editor preparing a writer's brief. A blog will be written about:
+
+TOPIC: "{topic}"
+
+STRATEGY:
+{plan_input}
+
+RESEARCH DOSSIER:
+{dossier_input}
+
+Your job: find the 3 most interesting, non-obvious insights hiding in this research.
+Not the most common facts. Not what everyone already knows.
+The stuff that makes a reader stop and think "I never thought about it that way."
+
+For each insight:
+- State it as a sharp, specific claim (one sentence)
+- Explain WHY it's surprising or counterintuitive (one sentence)
+- Note which angle of the topic it unlocks
+
+Format:
+INSIGHT 1: [the claim]
+WHY IT MATTERS: [why surprising]
+UNLOCKS: [angle it opens]
+
+INSIGHT 2: [the claim]
+WHY IT MATTERS: [why surprising]
+UNLOCKS: [angle it opens]
+
+INSIGHT 3: [the claim]
+WHY IT MATTERS: [why surprising]
+UNLOCKS: [angle it opens]
+
+CORE THESIS: [one sentence — the single most powerful idea the blog should build toward]
+
+If the dossier is thin, draw on what is widely known but underappreciated about this topic.
+Be specific. Be bold. Generic insights are useless.
+"""
+    result = _invoke(prompt, temperature=0.5)
+    logger.info(f"[INSIGHTS] Done | duration={time.time()-start:.1f}s")
+    return result
+
+
+@traceable(name="opening_hook_generator")
+def generate_opening_hook(topic: str, insights: str, plan: str, audience: str) -> str:
+    """
+    Opening Hook Generator — one dedicated LLM call, one job.
+
+    Generates 5 candidate opening sentences then picks the sharpest one.
+    The opening is the hardest sentence to write and the most important.
+    When buried inside a 2000-word prompt the LLM rushes it.
+    A dedicated call with a single focus produces a genuinely sharp first sentence.
+    """
+    _check_cancelled()
+    logger.info(f"[HOOK] Generating opening hook | topic='{topic[:60]}'")
+    start = time.time()
+
+    plan_input     = plan[:1_000]    if plan     else ""
+    insights_input = insights[:1_000] if insights else ""
+
+    prompt = f"""
+You are writing the opening sentence of a blog about: "{topic}"
+Target audience: {audience}
+
+CORE INSIGHTS TO DRAW FROM:
+{insights_input}
+
+STRATEGY BRIEF:
+{plan_input}
+
+Generate 5 completely different candidate opening sentences.
+Each must be a different TYPE:
+1. UNCOMFORTABLE TRUTH — something true that most people sense but nobody says
+2. VIVID SCENE — drop the reader into a specific moment, no setup
+3. COUNTERINTUITIVE CLAIM — the opposite of what most people assume
+4. PROVOCATIVE QUESTION — not a rhetorical cliché, a question that genuinely unsettles
+5. SURPRISING STATISTIC OR FACT — one real, specific fact that reframes everything
+
+Rules for every sentence:
+- Maximum 25 words
+- No throat-clearing ("In today's world...", "Have you ever wondered...", "X is one of the most...")
+- No topic name in the first 5 words unless unavoidable
+- Must make a smart reader stop scrolling
+
+Then pick the ONE that is sharpest and most likely to hook THIS specific audience.
+
+Format:
+TYPE 1 — UNCOMFORTABLE TRUTH: [sentence]
+TYPE 2 — VIVID SCENE: [sentence]
+TYPE 3 — COUNTERINTUITIVE CLAIM: [sentence]
+TYPE 4 — PROVOCATIVE QUESTION: [sentence]
+TYPE 5 — SURPRISING FACT: [sentence]
+
+CHOSEN HOOK: [the single best one, copied exactly]
+REASON: [one sentence on why this one wins for this topic and audience]
+"""
+    result = _invoke(prompt, temperature=0.7)
+
+    # Extract just the chosen hook to pass to the writer
+    chosen = ""
+    for line in result.split("\n"):
+        if line.strip().upper().startswith("CHOSEN HOOK:"):
+            chosen = line.split(":", 1)[1].strip().strip('"').strip("'")
+            break
+
+    if not chosen:
+        # Fallback: return full output so writer can use any of the 5
+        chosen = result
+
+    logger.info(f"[HOOK] Done | hook='{chosen[:80]}' | duration={time.time()-start:.1f}s")
+    return chosen
+
+
+@traceable(name="ending_generator")
+def generate_ending(blog: str, topic: str, insights: str) -> str:
+    """
+    Ending Generator — runs after the draft is written, before citations.
+
+    The closing paragraph is the second hardest sentence to write.
+    Currently the writer wraps up generically — recycled summary, motivational cliché.
+    This node generates 3 candidate endings and picks the sharpest.
+    The blog's last sentence is what the reader carries with them.
+    """
+    _check_cancelled()
+    logger.info(f"[ENDING] Generating ending | topic='{topic[:60]}'")
+    start = time.time()
+
+    # Give the ending generator the last 1000 chars of the blog for context
+    blog_tail    = blog[-1_500:]    if blog     else ""
+    insights_input = insights[:800] if insights else ""
+
+    prompt = f"""
+You are writing the final paragraph of a blog about: "{topic}"
+
+CORE INSIGHTS THE BLOG WAS BUILT AROUND:
+{insights_input}
+
+CURRENT BLOG ENDING (last section):
+{blog_tail}
+
+The current ending probably recaps what was already said. Replace it.
+
+Write 3 completely different candidate endings. Each must:
+- Be 2–4 sentences max
+- NOT summarise what was already said
+- Leave the reader with a NEW thought, a tension, a reframe, or a challenge
+- Land like a full stop — not trail off
+
+Types to try:
+ENDING A — THE REFRAME: takes the topic and shows it means something bigger than the reader assumed
+ENDING B — THE CHALLENGE: asks the reader to do or think something specific, right now
+ENDING C — THE HARD TRUTH: the uncomfortable conclusion that follows from everything the blog argued
+
+Then pick the ONE that fits this blog and topic best.
+
+Format:
+ENDING A — REFRAME:
+[2-4 sentences]
+
+ENDING B — CHALLENGE:
+[2-4 sentences]
+
+ENDING C — HARD TRUTH:
+[2-4 sentences]
+
+CHOSEN ENDING: [A, B, or C]
+FINAL TEXT:
+[the chosen ending, exactly as written above]
+"""
+    result = _invoke(prompt, temperature=0.6)
+
+    # Extract just the final text
+    final_text = ""
+    in_final = False
+    for line in result.split("\n"):
+        if line.strip().upper().startswith("FINAL TEXT:"):
+            in_final = True
+            after = line.split(":", 1)[1].strip()
+            if after:
+                final_text += after + "\n"
+            continue
+        if in_final:
+            final_text += line + "\n"
+
+    final_text = final_text.strip()
+    if not final_text:
+        final_text = result  # fallback: return everything
+
+    logger.info(f"[ENDING] Done | duration={time.time()-start:.1f}s")
+    return final_text
+
+
 @traceable(name="unified_writer")
-def write_blog(topic: str, audience: str, plan: str, research_data: str, memory: str, length: str = "medium", gap: str = "", facts: str | None = None) -> str:
+def write_blog(topic: str, audience: str, plan: str, research_data: str, memory: str, length: str = "medium", gap: str = "", facts: str | None = None, hook: str = "", insights: str = "") -> str:
     """
     Unified Writer — Paul Graham + Tim Urban + George Orwell combined.
     Adaptive by topic type — reading topic type from Strategy Planner output.
@@ -343,105 +551,133 @@ def write_blog(topic: str, audience: str, plan: str, research_data: str, memory:
     ))
     primary, secondary, light = weights
 
+    # Voice profile per topic type — makes every blog feel natural to its subject
+    VOICE_PROFILES = {
+        "sports":      "You are a passionate, knowledgeable cricket/sports fan who has watched thousands of hours of this sport. You talk like someone who actually loves the game — not a journalist filing a report, not a coach writing a manual. You have opinions. You get excited. You make comparisons a true fan would make.",
+        "technical":   "You are a sharp engineer or practitioner who has worked in this field. You explain things the way a great mentor does — not dumbing it down, not showing off. You know which details actually matter and which ones are noise.",
+        "educational": "You are a naturally curious person who just went deep on this topic and can't stop thinking about it. You explain it like you're telling a smart friend what you learned — genuinely excited, not performing excitement.",
+        "historical":  "You are a historian who makes the past feel alive and relevant. You connect what happened then to what it means now. You have a point of view — history isn't just dates and names to you.",
+        "analytical":  "You are a sharp thinker who has thought about this more carefully than most people. You're willing to say something uncomfortable if the evidence supports it. You show your reasoning, not just your conclusions.",
+        "opinion":     "You are someone with a clear, well-reasoned position on this topic. You acknowledge the other side honestly before dismantling it. You don't hedge. You say what you actually think.",
+        "science":     "You are a science journalist who bridges the gap between research papers and real people. You make complex things concrete. You care about accuracy but hate jargon. You find the human story inside the data.",
+        "health":      "You are a health writer who respects both the science and the reader's intelligence. No fear-mongering, no oversimplification. You tell people what the evidence actually says and what it means for their life.",
+        "business":    "You are a sharp business thinker with real experience. You cut through the management-speak. You talk about money, incentives, and decisions honestly — the way good operators do in private.",
+        "review":      "You are a trusted critic who has actually used/seen/experienced what you're reviewing. You have a clear verdict and you defend it with specific evidence. You are honest even when it's uncomfortable.",
+        "concept_explainer": "You are a thoughtful person who finds this idea genuinely fascinating and wants to share that fascination. You don't lecture. You explore. You let the reader discover alongside you.",
+        "person_biography":  "You are writing about someone you genuinely find interesting. You have a perspective on what makes them remarkable — not just their achievements, but the specific thing about how they think or operate that most people miss.",
+        "historical_event":  "You bring history alive by putting the reader in the room. You care about why things happened, not just what happened. You connect the past to something the reader can feel today.",
+    }
+
+    voice = VOICE_PROFILES.get(topic_type, "You are a smart, curious writer who has thought deeply about this topic. You write with a clear point of view — not neutral, not academic. Human.")
+
+    # Opening hook section — if a pre-generated hook exists, the writer leads with it
+    hook_section = ""
+    if hook and hook.strip():
+        hook_section = f"""
+OPENING HOOK — START WITH THIS EXACT SENTENCE:
+{hook.strip()}
+
+Do not change it. Do not add "Introduction" before it. The blog starts with this sentence.
+"""
+
+    # Insights section — the pre-extracted ideas for the writer to build around
+    insights_section = ""
+    if insights and insights.strip():
+        insights_section = f"""
+CORE INSIGHTS TO BUILD THE BLOG AROUND:
+{insights[:2_000]}
+
+One of these should be the spine of the whole blog. Pick the one that fits best and develop it deeply.
+Don't just mention all three and move on — choose one as the central argument and let the others support it.
+"""
+
     prompt = f"""
-You are a world-class blog writer. Your job is to write a blog that a real person actually wants to read — not a report, not a coaching manual, not a Wikipedia summary. A BLOG. Something with a voice, a point of view, and a reason to exist.
+{voice}
+
+Your job: write a blog that a real person actually wants to read. Not a report. Not a Wikipedia summary. Not a coaching manual. A blog — something with a voice, a point of view, and a reason to exist.
 
 Topic: {topic}
 Target Audience: {audience}
 Length: {length_instruction}
 
-WRITING STRATEGY (follow this exactly):
+WRITING STRATEGY:
 {plan_input}
 {gap_section}
+{hook_section}
+{insights_section}
 
 RESEARCH DOSSIER — FACTS YOU CAN USE:
 {verified_facts_input}
 
-PAST CONTEXT (from memory):
+PAST CONTEXT:
 {memory}
 
 ═══════════════════════════════════════
-WHAT MAKES A BLOG FEEL LIKE A BLOG
+WHAT A BLOG IS
 ═══════════════════════════════════════
-
-A blog is NOT:
-- A list of facts with headers
-- A coaching manual with drills and "practice sprints"
-- A Wikipedia article in disguise
-- A report that explains what experts say without having an opinion
-- Five identical sections each ending with the same type of paragraph
 
 A blog IS:
 - A writer with a specific point of view talking to a specific person
-- It has ONE central argument or insight that the whole piece builds toward
-- It makes the reader think "I never thought about it that way"
-- It earns every section — each part reveals something new, not just more of the same
-- It has rhythm — some paragraphs punch, some flow, some ask a question and sit with it
-- The ending lands. The reader feels something when they finish it.
+- ONE central argument or insight the whole piece builds toward
+- Something that makes the reader think "I never thought about it that way"
+- Sections that each reveal something NEW — not just more of the same
+- Rhythm — some paragraphs punch, some flow, some ask a question and sit with it
+- An ending that lands. The reader feels something.
+
+A blog is NOT:
+- Identical sections each ending with the same structural element
+- A list of facts with headers
+- Five paragraphs that all do the same thing
+- A report that describes what experts say without having an opinion
 
 ═══════════════════════════════════════
-TONE AND VOICE
+ADAPTIVE MECHANICS: {topic_type.upper()}
 ═══════════════════════════════════════
 
-Write like you are talking to someone smart who cares about this topic. Not a professor lecturing, not a journalist filing a report — a genuinely interested person explaining something they find fascinating.
+Primary: {primary}
+Secondary: {secondary}
+Light use: {light}
 
-- Use "you" to bring the reader into the experience
-- Have opinions. Don't just describe — say what it means, why it matters
-- Be direct. If something is surprising, say it's surprising. If something is counterintuitive, say so
-- Vary your rhythm. Short sentences hit hard. Longer ones build momentum and carry the reader forward before the next short one lands.
-- One strong analogy per major concept — make it physical, visual, specific. Not "it's like a machine." Something the reader can see in their head.
-- Each section should end with a sentence that creates forward pull — a question, a tension, a promise of what's next
+PAUL GRAHAM: uncomfortable truth upfront → show the reasoning chain, not just the conclusion → contrarian reframe → "why does this actually work?" answered with real logic
+TIM URBAN: zoom out to show scale → one relatable villain/mechanism → bridge analogy (physical, visual, specific — not "it's like a machine") → curiosity loop at section end → "you" frame
+ORWELL: every sentence earns its place → concrete over abstract → active voice → strong verbs → rhythm (never three same-length sentences in a row) → no banned words
 
-═══════════════════════════════════════
-ADAPTIVE MECHANIC EMPHASIS: {topic_type.upper()}
-═══════════════════════════════════════
-
-Primary (lead every major section with this): {primary}
-Secondary (support and deepen with this): {secondary}
-Light use (one or two moments in the whole piece): {light}
-
-PAUL GRAHAM moves: uncomfortable truth upfront → reasoning chain (show steps not just conclusion) → contrarian insight that reframes → "why does this actually work?" question answered with real logic
-TIM URBAN moves: zoom out to show scale → one relatable villain or mechanism → bridge analogy (physical, visual, specific) → curiosity loop at section end → "you" frame that puts reader in the scenario
-ORWELL moves: one-sentence test (cut anything that earns nothing) → concrete over abstract → active voice → strong verbs (cuts, forces, reveals, doubles) → rhythm (never three same-length sentences in a row)
+BANNED WORDS: utilize, leverage, impactful, holistic, synergy, paradigm, "it's important to note", "in today's world", "needless to say", "at the end of the day", "game changer", "deep dive", "journey"
 
 ═══════════════════════════════════════
 STRUCTURE
 ═══════════════════════════════════════
 
-- Short paragraphs — 2 to 4 lines max. Blank line between every paragraph.
+- Short paragraphs — 2 to 4 lines max. Blank line between paragraphs.
 - Section headings: ### before each heading
 - No bullet points or numbered lists in the main body
 - No emojis, no hashtags
-- Do NOT end every section with the same structural element (no "practice sprint" after every section, no identical curiosity-loop sentence pattern repeated 5 times)
-- Vary what each section does: some sections explain, some tell a story, some make an argument, some zoom out, some zoom in
+- Vary what sections DO: some explain, some tell a story, some argue, some zoom out, some zoom in
+- Do NOT repeat the same structural element at the end of every section
 
 ═══════════════════════════════════════
-ABSOLUTE FACT RULES — these make or break reader trust
+FACT RULES
 ═══════════════════════════════════════
 
-1. NEVER invent a specific match moment, game, date, score, or event that is not in the dossier.
-   WRONG: "In the fourth day of the Eden Gardens Test, Rohit faced a full-toss..."
+1. NEVER invent a specific match, game, date, score or event not in the dossier.
+   WRONG: "In the Eden Gardens Test on day four, Rohit faced a full-toss..."
    RIGHT: "When Rohit faces a full-toss, his back foot is already lifting..."
-   The difference: one invents a specific fictional event. The other describes a real pattern without faking a source.
+   One fakes a source. The other describes a real pattern honestly.
 
-2. Every specific NUMBER, PERCENTAGE, STATISTIC must come from the dossier. If it's not there — write the insight without the number.
-   WRONG: "his shot-decision window is 150–200ms" (unless it's in the dossier)
-   RIGHT: "the window between reading the delivery and committing to a shot is measured in milliseconds — less than the time it takes to blink"
+2. Every specific NUMBER must come from the dossier. If not there — write the insight without the number.
 
-3. CONFIRMED FACTS from dossier: state directly and confidently with attribution.
-4. SINGLE-SOURCE FACTS: use "according to [source]..." framing.
-5. If something is a general truth or widely accepted — you can state it without a source, but do NOT attach a fake specific statistic to it.
-6. If the dossier is thin — write a richer, more insightful blog using ANALYSIS, PATTERN RECOGNITION, and OPINION. A great blog does not need 20 statistics. It needs one original idea developed deeply.
+3. If the dossier is thin — write a richer blog using analysis, pattern recognition, and opinion.
+   A great blog does not need 20 statistics. It needs one original idea developed deeply.
 
 ═══════════════════════════════════════
 THE ONE TEST
 ═══════════════════════════════════════
 
-Before you write each section, ask: "If a passionate fan of this topic read this section, would they learn something new, feel something, or see something differently?"
+Before writing each section ask: would a passionate fan of this topic learn something, feel something, or see something differently after reading this?
 
-If the answer is no — rewrite it until the answer is yes.
+If no — rewrite until yes.
 
-Write the full blog now. Start with the opening — not with the topic name, not with "Introduction", not with a definition. Start with a scene, a tension, an uncomfortable truth, or a question that earns the reader's attention in the first sentence.
+Write the full blog now. {"Start with the hook above." if hook else "Start with a scene, tension, uncomfortable truth, or question. Not the topic name. Not a definition. Not 'Introduction'."}
 """
     result = _invoke(prompt, temperature=0.65)
     logger.info(f"[WRITER] Done | topic_type={topic_type} | duration={time.time()-start:.1f}s | words={len(result.split())}")
@@ -556,58 +792,55 @@ FIXED: [fixed sentence]
 @traceable(name="editorial_critic")
 def critique_and_rewrite(blog: str, topic: str, audience: str) -> str:
     """
-    Editorial Critic — evaluates the blog and returns a structured critique.
-    Does NOT rewrite. Quality Router reads this output to decide if revision needed.
-    If revision needed, targeted_revision fixes only the flagged issues.
+    Human Rubric Critic — evaluates the blog the way a real reader would.
+    Asks the questions that matter: would you share this? does it have an opinion?
+    is there one sentence you'd quote? did the opening earn attention?
     """
     _check_cancelled()
     logger.info(f"[CRITIC] Starting | topic='{topic[:60]}'")
     start = time.time()
 
     prompt = f"""
-You are a senior editor who evaluates blogs against three specific writing mechanics: Paul Graham (original insight), Tim Urban (storytelling and curiosity), George Orwell (clarity and precision).
+You are a sharp, honest editor. You read this blog the way a real person would — not checking boxes, actually reading it.
 
 Topic: {topic}
-Target Audience: {audience}
+Audience: {audience}
 
-Evaluate this blog on 5 dimensions. Score 1-10 and give ONE specific fix if needed.
+Answer these 5 questions about the blog. Be specific and brutally honest.
 
-DIMENSION 1 — OPENING STRENGTH
-Does it open with an uncomfortable truth or zoom-out? Does it hook by line 3?
-Score: X/10
-Issue: (specific weakness or "None")
-Fix: (exact change or "None")
+QUESTION 1 — WOULD YOU SHARE THIS?
+If a friend who cares about this topic sent you this blog, would you forward it to someone else?
+Answer: YES or NO
+Why: (one specific sentence — what earns it or kills it)
 
-DIMENSION 2 — ORIGINAL INSIGHT (Paul Graham)
-Does each section have one insight the reader couldn't have Googled? Is the reasoning shown not just stated?
-Score: X/10
-Issue: (which section is just summarizing, or "None")
-Fix: (what original angle to add, or "None")
+QUESTION 2 — DOES IT HAVE AN OPINION?
+Does the writer have a clear point of view, or are they just describing things?
+Is there a moment where the writer says something they actually believe, not just reports what others say?
+Answer: YES or NO
+Which line shows it (or is missing): (quote the line or describe what's missing)
 
-DIMENSION 3 — ANALOGIES AND CURIOSITY (Tim Urban)
-Is there at least one strong bridge analogy? Does each section make the reader want the next?
-Score: X/10
-Issue: (missing analogy or weak curiosity loop, or "None")
-Fix: (specific analogy to add or section to close better, or "None")
+QUESTION 3 — ONE QUOTABLE SENTENCE
+Find the single best sentence in the entire blog — the one a reader would screenshot, copy, or remember.
+If none exists, say "NONE FOUND" and name which section most needs one.
+Best sentence: (quote it or "NONE FOUND — fix [section name]")
 
-DIMENSION 4 — CLARITY AND PRECISION (Orwell)
-Are there abstract nouns that should be concrete? Passive voice? Banned words? Weak verbs?
-Score: X/10
-Issue: (specific sentences that fail, or "None")
-Fix: (rewrite those specific sentences, or "None")
+QUESTION 4 — DID THE OPENING EARN ATTENTION?
+Read the first 3 sentences. Would a smart reader who skims headlines stop and keep reading?
+Answer: YES or NO
+Issue: (what specifically is wrong, or "None")
+Fix: (rewrite the opening in 1–2 sharp sentences, or "None needed")
 
-DIMENSION 5 — CONCLUSION
-Is it a new thought that lands, or a recycled summary?
-Score: X/10
-Issue: (specific weakness or "None")
-Fix: (what the conclusion should say instead, or "None")
+QUESTION 5 — DOES THE ENDING LAND?
+Does the last paragraph say something NEW, or does it just repeat what the blog already said?
+Answer: LANDS or RECYCLES
+Issue: (what it says now vs what it should say)
 
-OVERALL VERDICT
-Pass (all dimensions >= 7): YES or NO
-Priority Fix: (if NO — the single most important fix)
+OVERALL
+Pass: YES or NO (YES only if Q1=YES and at least 3 of Q2-Q5 pass)
+Priority Fix: (the single change that would most improve this blog — be specific)
 
 Blog:
-{blog}
+{blog[:5_000]}
 """
     result = _invoke(prompt, temperature=0.2)
     logger.info(f"[CRITIC] Done | duration={time.time()-start:.1f}s")
@@ -617,32 +850,36 @@ Blog:
 @traceable(name="targeted_revision")
 def targeted_revision(blog: str, critique: str, topic: str, audience: str) -> str:
     """
-    Targeted Revision — fixes ONLY the issues flagged by the Editorial Critic.
-    Does not rewrite the whole blog. Surgical and fast.
+    Targeted Revision — fixes ONLY the issues flagged by the Human Rubric Critic.
+    Surgical and fast — does not rewrite the whole blog.
     """
     _check_cancelled()
     logger.info(f"[REVISION] Starting targeted revision | topic='{topic[:60]}'")
     start = time.time()
 
     prompt = f"""
-You are a precise editor. You fix only what is broken — nothing else.
+You are a precise editor. Fix only what the critic flagged — nothing else.
 
 Topic: {topic}
-Target Audience: {audience}
+Audience: {audience}
 
-EDITORIAL CRITIQUE (fix only what is flagged here):
+HUMAN RUBRIC CRITIQUE:
 {critique}
 
-RULES:
-- Fix ONLY the specific issues listed in the critique above
-- Do NOT rewrite sections that scored 7 or above
-- Do NOT change the structure unless the critique explicitly flags it
-- Do NOT change facts, numbers or citations
-- Keep the same voice, tone and style throughout
-- Section headings must stay as ### prefix
-- If the critique says "None" for an issue — leave that section completely untouched
+WHAT TO FIX:
+- If the opening failed Q4 and a rewrite was given — use it
+- If no quotable sentence exists (Q3 = NONE FOUND) — add one sharp sentence to the section named
+- If the ending recycles (Q5 = RECYCLES) — write a new final paragraph that says something new
+- If the blog has no opinion (Q2 = NO) — add one clear point of view in the section that most needs it
+- Address the Priority Fix if it was not covered above
 
-Return the full revised blog. No commentary.
+RULES:
+- Touch ONLY what the critique flagged
+- Do NOT rewrite sections that passed
+- Do NOT change facts, numbers or citations
+- Keep the same voice and style
+- Section headings stay as ### prefix
+- Return the full revised blog — no commentary
 
 Original Blog:
 {blog}

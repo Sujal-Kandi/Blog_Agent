@@ -919,7 +919,9 @@ Overall Score: (average of the 5, one decimal place)
 Verdict: (one sharp sentence — what this blog does well and the single thing that would push it higher)
 
 Blog:
-{blog[:4_000]}
+{blog[:2_000]}
+...
+{blog[-1_500:]}
 
 SEO Metadata:
 {seo}

@@ -194,6 +194,7 @@ You are an elite content strategist. Your strategy brief will be used directly b
 
 Topic: {topic}
 Target Audience: {audience}
+Audience Note: Write for this specific audience — calibrate depth, tone, and assumed knowledge accordingly.
 
 STEP 1 — TOPIC INTELLIGENCE
 Topic Type: (one of) Technical | Sports | Educational | Historical | Analytical | Review | Opinion | Science | Health | Business
@@ -594,6 +595,25 @@ One of these should be the spine of the whole blog. Pick the one that fits best 
 Don't just mention all three and move on — choose one as the central argument and let the others support it.
 """
 
+    # Audience-aware depth instruction — tells the writer what to assume about
+    # the reader's existing knowledge so it doesn't over-explain or under-explain.
+    audience_lower = audience.lower()
+    if any(w in audience_lower for w in ["fan", "enthusiast", "follower", "player", "expert", "professional", "developer", "engineer"]):
+        audience_depth = (
+            f"Audience depth: KNOWLEDGEABLE — {audience} already understand the basics. "
+            "Skip definitions. Use insider language. Go one level deeper than a general explainer."
+        )
+    elif any(w in audience_lower for w in ["beginner", "new", "first", "learning", "curious", "general"]):
+        audience_depth = (
+            f"Audience depth: GENERAL — {audience} may be new to parts of this topic. "
+            "Explain jargon the first time you use it. Use analogies. Don't assume prior knowledge."
+        )
+    else:
+        audience_depth = (
+            f"Audience depth: MIXED — {audience}. Explain the non-obvious, skip the obvious. "
+            "Write like a smart friend who knows this topic well, not a textbook."
+        )
+
     prompt = f"""
 {voice}
 
@@ -601,6 +621,7 @@ Your job: write a blog that a real person actually wants to read. Not a report. 
 
 Topic: {topic}
 Target Audience: {audience}
+{audience_depth}
 Length: {length_instruction}
 
 WRITING STRATEGY:

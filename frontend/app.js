@@ -3,6 +3,50 @@ let selectedLength = 'medium';
 let progressTimers = [];
 let _lastTopic = ''; // store topic so PDF filename survives resetForm()
 
+// ── Audience inference ────────────────────────────────────────────────────────
+// Maps topic keywords to a sensible default audience + placeholder example.
+const AUDIENCE_RULES = [
+  { keywords: ['cricket','ipl','test match','odi','t20','kohli','rohit','bumrah','dhoni','sachin','virat','batting','bowling','wicket','runs'], audience: 'Cricket fans and sports enthusiasts',   placeholder: 'e.g. Cricket fans who follow IPL and international matches' },
+  { keywords: ['football','soccer','premier league','la liga','fifa','messi','ronaldo','neymar','goal','transfer'], audience: 'Football fans and sports enthusiasts',    placeholder: 'e.g. Football fans who follow the Premier League' },
+  { keywords: ['basketball','nba','lebron','kobe','curry','dunk','playoffs'],                                       audience: 'Basketball fans and NBA followers',          placeholder: 'e.g. NBA fans who follow player stats and team dynamics' },
+  { keywords: ['startup','saas','venture capital','founder','product market fit','b2b','churn','mrr','arr'],        audience: 'Startup founders and early-stage entrepreneurs', placeholder: 'e.g. First-time founders building a SaaS product' },
+  { keywords: ['business','marketing','sales','revenue','customer','brand','strategy','cmo','ceo'],                 audience: 'Business professionals and managers',       placeholder: 'e.g. Mid-level managers and marketing leads' },
+  { keywords: ['ai','machine learning','llm','gpt','neural network','deep learning','data science','python','coding','developer','software'], audience: 'Developers and tech professionals', placeholder: 'e.g. Software engineers curious about AI trends' },
+  { keywords: ['diet','weight loss','nutrition','calories','intermittent fasting','keto','protein','gut','metabolism'], audience: 'Health-conscious adults',               placeholder: 'e.g. People aged 25-40 trying to improve their diet' },
+  { keywords: ['gym','workout','fitness','exercise','strength training','muscle','cardio','running'],               audience: 'Fitness enthusiasts and gym-goers',          placeholder: 'e.g. People who work out 3-4 times a week' },
+  { keywords: ['sleep','stress','anxiety','mental health','mindfulness','meditation','burnout','therapy'],          audience: 'Adults dealing with stress and mental wellness', placeholder: 'e.g. Working adults dealing with burnout or poor sleep' },
+  { keywords: ['history','empire','war','ancient','civilisation','century','dynasty','revolution'],                 audience: 'History enthusiasts and curious readers',    placeholder: 'e.g. Readers who enjoy learning about world history' },
+  { keywords: ['philosophy','stoic','buddhism','hinduism','ethics','consciousness','meaning','existential'],        audience: 'Curious readers interested in ideas and philosophy', placeholder: 'e.g. People who enjoy reading about philosophy and meaning' },
+  { keywords: ['science','physics','biology','chemistry','climate','space','nasa','evolution','quantum'],           audience: 'Curious general readers interested in science', placeholder: 'e.g. People who enjoy science journalism and explainers' },
+  { keywords: ['money','invest','stock','crypto','bitcoin','personal finance','savings','retirement','tax'],        audience: 'Young adults managing personal finances',    placeholder: 'e.g. People in their 20s and 30s building their savings' },
+  { keywords: ['travel','destination','itinerary','backpack','culture','visa','flight','hotel'],                    audience: 'Travel enthusiasts and adventure seekers',   placeholder: 'e.g. People who travel 2-4 times a year' },
+  { keywords: ['movie','film','series','netflix','streaming','director','actor','oscars','review'],                 audience: 'Movie and TV series fans',                   placeholder: 'e.g. Avid streamers and cinema lovers' },
+  { keywords: ['book','author','novel','reading','literature','fiction','nonfiction'],                             audience: 'Avid readers and book lovers',                placeholder: 'e.g. People who read 10+ books a year' },
+];
+
+function inferAudience(topic) {
+  const lo = topic.toLowerCase();
+  for (const rule of AUDIENCE_RULES) {
+    if (rule.keywords.some(kw => lo.includes(kw))) {
+      return rule.audience;
+    }
+  }
+  return 'general readers';
+}
+
+function updateAudiencePlaceholder(topic) {
+  const lo = topic.toLowerCase();
+  const input = document.getElementById('audienceInput');
+  for (const rule of AUDIENCE_RULES) {
+    if (rule.keywords.some(kw => lo.includes(kw))) {
+      input.placeholder = rule.placeholder;
+      return;
+    }
+  }
+  input.placeholder = 'e.g. Curious adults who want to understand this topic deeply';
+}
+
+
 // Wake up Render on page load
 fetch(`${API_URL}/docs`).catch(() => {});
 
@@ -16,6 +60,14 @@ window.addEventListener('load', () => {
   hide('progressSection');
   hide('outputSection');
   show('formSection');
+
+  // Update audience placeholder as the user types a topic
+  const topicInput = document.getElementById('topicInput');
+  if (topicInput) {
+    topicInput.addEventListener('input', () => {
+      updateAudiencePlaceholder(topicInput.value.trim());
+    });
+  }
 });
 
 function selectLength(length) {
@@ -50,13 +102,19 @@ function resetForm() {
 
 async function generateBlog() {
   const topic = document.getElementById('topicInput').value.trim();
-  const audience = document.getElementById('audienceInput').value.trim();
+  let audience = document.getElementById('audienceInput').value.trim();
 
   if (!topic) {
     document.getElementById('topicInput').focus();
     document.getElementById('topicInput').style.borderColor = '#ef4444';
     setTimeout(() => document.getElementById('topicInput').style.borderColor = '', 2000);
     return;
+  }
+
+  // If audience is blank, auto-infer from topic keywords
+  if (!audience) {
+    audience = inferAudience(topic);
+    document.getElementById('audienceInput').value = audience;
   }
 
   _lastTopic = topic; // save before form gets cleared

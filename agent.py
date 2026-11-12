@@ -677,6 +677,11 @@ FACT RULES
 
 3. If the dossier is thin — write a richer blog using analysis, pattern recognition, and opinion.
    A great blog does not need 20 statistics. It needs one original idea developed deeply.
+   CRITICAL: "thin dossier" means write FEWER numbers, not invented ones.
+   If a stat is not in CONFIRMED FACTS, describe the pattern without the number.
+   WRONG: "his average in chases is 65" (not in dossier)
+   RIGHT: "his average in chases is notably higher than his overall career average"
+   The second version is honest, still informative, and cannot be fact-checked wrong.
 
 4. CLAIM GROUNDING — quotes and named events must be real.
    Every quote attributed to a real person MUST appear in the dossier.
@@ -739,9 +744,33 @@ def audit_facts(blog: str, dossier: str, topic: str) -> str:
     dossier_lower = dossier.lower()
     unverified = []
     for num in all_numbers_clean:
-        # Check if the raw number appears anywhere in the dossier
-        if num.lower() not in dossier_lower:
-            unverified.append(num)
+        num_lo = num.lower()
+        # Short numbers (1-2 digits, e.g. "12", "85") are common and can match
+        # unrelated dossier text. Require them to appear with adjacent context
+        # (the word before or after in the blog) to prevent false passes.
+        if len(num_lo.replace(".", "").replace("%", "")) <= 2:
+            # Find the sentence containing this number in the blog
+            sentence_containing = next(
+                (s for s in _re.split(r'(?<=[.!?])\s+', blog)
+                 if num_lo in s.replace(",", "").lower()),
+                ""
+            )
+            # Extract 1-2 surrounding words for context
+            context_match = _re.search(
+                r'(\w+\s+)?' + _re.escape(num_lo) + r'(\s+\w+)?',
+                sentence_containing.lower()
+            )
+            if context_match:
+                context_str = context_match.group(0).strip()
+                if context_str not in dossier_lower:
+                    unverified.append(num)
+            else:
+                # Can't build context — treat as unverified
+                unverified.append(num)
+        else:
+            # Longer numbers: direct match is specific enough
+            if num_lo not in dossier_lower:
+                unverified.append(num)
 
     # Deduplicate
     unverified = list(dict.fromkeys(unverified))
@@ -881,10 +910,15 @@ def _audit_named_claims(blog: str, dossier: str, topic: str) -> str:
         # Check if core nouns from the sentence appear in dossier
         # Extract capitalized words (likely proper nouns / names)
         proper_nouns = _re.findall(r'\b[A-Z][a-z]{2,}\b', sentence)
+        # For events, also check that any numbers in the sentence appear in the dossier
+        # (e.g. "2024 IPL semi-final" — the year "2024" must be in the dossier too)
+        event_numbers = _re.findall(r'\b\d{4}\b', sentence)  # years like 2024, 2023
+        numbers_verified = all(n in dossier_lower for n in event_numbers) if event_numbers else True
+
         # Check if at least 2 proper nouns from this sentence appear in dossier
         matched = sum(1 for noun in proper_nouns if noun.lower() in dossier_lower)
 
-        if matched < 2:
+        if matched < 2 or not numbers_verified:
             # Likely invented — flag for fixing
             suspicious.append(sentence)
 
@@ -1156,15 +1190,27 @@ VERDICT: sentence
     return scores
 
 
-def generate_extras(blog: str, topic: str) -> dict:
+def generate_extras(blog: str, topic: str, facts: str = "") -> dict:
+    # Build a grounded facts reference for TL;DR so bullets don't echo hallucinated claims
+    facts_ref = ""
+    if facts and facts.strip():
+        facts_ref = f"""
+VERIFIED FACTS REFERENCE (TL;DR bullets must only use claims from here or general observations):
+{facts[:2000]}
+"""
+
     prompt = f"""
 You are an editorial designer. Given this blog, generate three things:
 
-1. TL;DR — exactly 3 bullet points summarizing the most important takeaways. Each bullet is one sharp sentence. No fluff.
+1. TL;DR — exactly 3 bullet points summarizing the most important takeaways. Each bullet is one sharp sentence.
+   RULE: Only include specific numbers or statistics if they appear in the VERIFIED FACTS REFERENCE below.
+   If a number is not verified, describe the insight without the number.
+   No fluff.
 2. Pull Quote — pick the single most powerful, quotable sentence from the blog. It should be something that makes a reader stop and think.
 3. Key Takeaway — one bold, specific sentence that captures the core message of the entire blog. Not a summary — a conclusion that lands.
 
 Topic: {topic}
+{facts_ref}
 
 Blog:
 {blog}

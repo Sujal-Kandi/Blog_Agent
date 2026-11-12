@@ -444,7 +444,7 @@ def node_citations(state: BlogState) -> dict[str, str]:
 
 @_guarded
 def node_extras(state: BlogState) -> dict[str, object]:
-    return {"extras": generate_extras(state["final_blog"], state["topic"])}
+    return {"extras": generate_extras(state["final_blog"], state["topic"], state.get("facts", ""))}
 
 @_guarded
 def node_save_memory(state: BlogState) -> BlogState:

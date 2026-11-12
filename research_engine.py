@@ -774,7 +774,7 @@ def build_dossier(
 
     # Confirmed facts
     if verified["confirmed"]:
-        lines.append("── CONFIRMED FACTS (verified by 2+ independent sources — cite directly) ──")
+        lines.append("── CONFIRMED FACTS (verified by 2+ independent sources — safe to state directly) ──")
         for i, c in enumerate(verified["confirmed"], 1):
             # Include source context explicitly to prevent format/attribution mix-ups
             source_context = f"{c.source_title}" if c.source_title else "unknown source"
@@ -790,12 +790,15 @@ def build_dossier(
 
     # Single-source facts
     if verified["single_source"]:
-        lines.append('── SINGLE-SOURCE FACTS (attribute as: "according to [Source]...") ──')
+        lines.append(
+            '── SINGLE-SOURCE FACTS (from ONE source only — MUST be attributed: '
+            '"according to [Source]..." or "reportedly..." — NEVER state as confirmed fact) ──'
+        )
         for i, c in enumerate(verified["single_source"], 1):
             source_context = f"{c.source_title}" if c.source_title else "unknown source"
             date_context = f" ({c.published_date[:4]})" if c.published_date and len(c.published_date) >= 4 else ""
             lines.append(
-                f"FACT-{i}: {c.claim}\n"
+                f"FACT-{i} [SINGLE-SOURCE — attribute to {source_context!r}]: {c.claim}\n"
                 f"  Context: {c.evidence[:200]}\n"
                 f"  Source: {source_context}{date_context}\n"
                 f"  URL: {c.source_url}"
@@ -808,6 +811,18 @@ def build_dossier(
         for i, c in enumerate(verified["disputed"], 1):
             lines.append(f"DISPUTED-{i}: {c.claim} [conflicting sources]")
         lines.append("")
+
+    # Hard rules for the writer
+    lines.append(
+        "── WRITER RULES ──\n"
+        "1. Only use numbers and statistics from CONFIRMED FACTS above.\n"
+        "2. SINGLE-SOURCE facts must be attributed to the source — never stated as plain fact.\n"
+        "3. If the dossier has no confirmed stat for a claim, write the insight WITHOUT a number.\n"
+        "   WRONG: 'his win-rate jumps to 80% when he scores a fifty'\n"
+        "   RIGHT: 'India's win-rate rises sharply when he converts a fifty'\n"
+        "4. Never invent percentages, run totals, averages, or match results not in this dossier.\n"
+        "5. DISPUTED claims must be presented as disputed — do not pick one side.\n"
+    )
 
     # Competitor gap
     if competitor_gap:

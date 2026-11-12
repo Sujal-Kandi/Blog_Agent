@@ -403,6 +403,38 @@ def generate_sub_queries(topic: str, use_llm_fallback=None) -> tuple[list[str], 
 
         queries = queries[:5]
 
+        # ── Freshness override — force True for topics about active/recent people ──
+        # The LLM sometimes returns freshness_required=False for person_skill or
+        # person_biography topics (e.g. "How Rohit Sharma became...") because it
+        # treats them as evergreen analysis. But active players' stats change
+        # season by season — stale mid-career snapshots cause data quality issues.
+        # Rule: if the topic type is person-related OR the topic text mentions a
+        # known active-sport signal, force freshness so Tavily uses recent sources.
+        _FRESHNESS_TOPIC_TYPES = {
+            "person_biography", "person_skill", "sports_analysis",
+        }
+        _FRESHNESS_SIGNALS = [
+            # Sports organisations / tournaments that have recent editions
+            "ipl", "world cup", "champions trophy", "odi", "t20", "test match",
+            "premier league", "nba", "la liga", "fifa", "grand prix", "formula",
+            # Active-player signal words
+            "career", "stats", "average", "record", "wickets", "runs", "goals",
+            "season", "series", "innings", "match", "tournament",
+        ]
+        topic_lo = topic.lower()
+        freshness_override = (
+            topic_type in _FRESHNESS_TOPIC_TYPES
+            or any(sig in topic_lo for sig in _FRESHNESS_SIGNALS)
+        )
+        if freshness_override and not freshness_required:
+            freshness_required = True
+            logger.info(
+                f"[PHASE1] freshness_required overridden to True "
+                f"(topic_type={topic_type}, topic signals matched)"
+            )
+
+        queries = queries[:5]
+
         logger.info(
             f"[PHASE1] topic_type={topic_type} | freshness={freshness_required} | "
             f"queries={len(queries)}"
@@ -419,7 +451,14 @@ def generate_sub_queries(topic: str, use_llm_fallback=None) -> tuple[list[str], 
             f"{topic} statistics data facts",
             f"{topic} expert analysis overview",
         ]
-        return fallback, "other", False
+        # Apply freshness override even in fallback path
+        topic_lo = topic.lower()
+        fallback_freshness = any(sig in topic_lo for sig in [
+            "ipl", "world cup", "odi", "t20", "career", "stats", "average",
+            "record", "wickets", "runs", "season", "series", "innings",
+            "premier league", "nba", "la liga", "fifa", "grand prix",
+        ])
+        return fallback, "other", fallback_freshness
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

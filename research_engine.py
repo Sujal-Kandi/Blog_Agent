@@ -784,61 +784,271 @@ Evidence:
 
 def _cross_check_in_chunks(claim: Claim, chunks: list[dict]) -> bool:
     """
-    Check if a claim's key number/name appears in 2+ chunks from different URLs.
-    Returns True if cross-verified within existing results (free, instant).
-    """
-    # Extract the core verifiable element from the claim
-    # Look for numbers, percentages, or quoted names
-    numbers = re.findall(r'\d+\.?\d*\s*%?', claim.claim)
-    key_terms = numbers if numbers else claim.claim.split()[:4]
+    Check if a claim's key number/name appears in 2+ chunks from DIFFERENT URLs,
+    AND that the number appears in the SAME CONTEXT as the claim (not just anywhere).
 
-    supporting_urls = set()
+    Stricter than before:
+    - Numbers must appear within 60 chars of a claim keyword in the chunk text
+    - Both chunks must be from different domains (not just different URLs)
+    - Short numbers (1-2 digits) require a context window match, not bare match
+    """
+    numbers = re.findall(r'\b\d+\.?\d*\b', claim.claim)
+    # Key non-stopword words from the claim for context anchoring
+    stopwords = {"the", "a", "an", "is", "are", "of", "in", "his", "her",
+                 "with", "for", "and", "that", "this", "was", "has", "had"}
+    claim_words = [
+        w.lower() for w in re.findall(r'\b[a-zA-Z]{4,}\b', claim.claim)
+        if w.lower() not in stopwords
+    ][:4]
+
+    if not numbers:
+        # No numbers — fall back to keyword overlap
+        supporting_urls = set()
+        for chunk in chunks:
+            chunk_lo = chunk["text"].lower()
+            if sum(1 for w in claim_words if w in chunk_lo) >= 2:
+                supporting_urls.add(chunk["source_url"])
+        return len(supporting_urls) >= 2
+
+    supporting_domains: set[str] = set()
+
     for chunk in chunks:
         chunk_lo = chunk["text"].lower()
-        if all(str(t).lower() in chunk_lo for t in key_terms[:2]):
-            supporting_urls.add(chunk["source_url"])
+        url = chunk.get("source_url", "")
 
-    return len(supporting_urls) >= 2
+        # Extract domain for deduplication
+        try:
+            domain = url.split("/")[2].lower().replace("www.", "")
+        except IndexError:
+            domain = url
+
+        matched = False
+        for num in numbers:
+            num_lo = num.lower()
+
+            # For short numbers (≤2 digits), require them to appear near
+            # a claim keyword within a 80-char window — prevents "88" matching
+            # unrelated "188" or "880" in the text
+            if len(num_lo.replace(".", "")) <= 2:
+                # Find positions of this number in the chunk
+                for m in re.finditer(r'\b' + re.escape(num_lo) + r'\b', chunk_lo):
+                    start = max(0, m.start() - 80)
+                    end   = min(len(chunk_lo), m.end() + 80)
+                    window = chunk_lo[start:end]
+                    # At least one claim keyword must appear in the window
+                    if any(w in window for w in claim_words):
+                        matched = True
+                        break
+            else:
+                # Longer numbers: exact match is specific enough
+                if re.search(r'\b' + re.escape(num_lo) + r'\b', chunk_lo):
+                    # Still require at least one claim keyword nearby
+                    for m in re.finditer(r'\b' + re.escape(num_lo) + r'\b', chunk_lo):
+                        start = max(0, m.start() - 120)
+                        end   = min(len(chunk_lo), m.end() + 120)
+                        window = chunk_lo[start:end]
+                        if any(w in window for w in claim_words):
+                            matched = True
+                            break
+
+            if matched:
+                break
+
+        if matched:
+            supporting_domains.add(domain)
+
+    return len(supporting_domains) >= 2
+
+
+def _extract_primary_number(claim_text: str) -> str | None:
+    """
+    Extract the most significant number from a claim — the one that defines it.
+    e.g. "bowling average of 102.5" → "102.5"
+         "3 wickets in 13 matches"  → "3"  (first specific stat)
+    Returns None if no numbers found.
+    """
+    # Prefer decimal numbers (more specific)
+    decimals = re.findall(r'\b\d+\.\d+\b', claim_text)
+    if decimals:
+        return decimals[0]
+    # Fall back to any integer
+    integers = re.findall(r'\b\d+\b', claim_text)
+    return integers[0] if integers else None
+
+
+def _check_contradiction(claim: Claim, chunks: list[dict]) -> bool:
+    """
+    Detect if other chunks contain a DIFFERENT value for the same stat.
+    e.g. claim says "average of 88", another chunk says "average of 102.5"
+    for the same player/metric = contradiction → mark as disputed.
+
+    Returns True if a contradiction is found.
+    """
+    primary_num = _extract_primary_number(claim.claim)
+    if not primary_num:
+        return False
+
+    stopwords = {"the", "a", "an", "is", "are", "of", "in", "his", "her",
+                 "with", "for", "and", "that", "this", "was", "has", "had"}
+    claim_words = [
+        w.lower() for w in re.findall(r'\b[a-zA-Z]{4,}\b', claim.claim)
+        if w.lower() not in stopwords
+    ][:3]
+
+    if not claim_words:
+        return False
+
+    # Metric keywords that signal the same stat is being described
+    metric_words = re.findall(
+        r'\b(average|economy|wickets?|strike\s+rate|runs?\s+per\s+(over|wicket)|appearances?)\b',
+        claim.claim, re.IGNORECASE
+    )
+    metric_terms = [m[0].lower() for m in metric_words]
+
+    for chunk in chunks:
+        # Skip the claim's own source
+        if chunk.get("source_url") == claim.source_url:
+            continue
+
+        chunk_lo = chunk["text"].lower()
+
+        # Check if this chunk is about the same subject
+        subject_match = sum(1 for w in claim_words if w in chunk_lo)
+        if subject_match < 1:
+            continue
+
+        # Check if the same metric appears with a DIFFERENT number
+        for metric in metric_terms:
+            if metric not in chunk_lo:
+                continue
+            # Find numbers near this metric in the chunk
+            for m in re.finditer(re.escape(metric), chunk_lo):
+                start = max(0, m.start() - 40)
+                end   = min(len(chunk_lo), m.end() + 40)
+                window = chunk_lo[start:end]
+                chunk_nums = re.findall(r'\b\d+\.?\d*\b', window)
+                for cn in chunk_nums:
+                    # Different number for same metric = contradiction
+                    # Allow ±5% tolerance for rounding differences
+                    try:
+                        cv = float(cn)
+                        pv = float(primary_num)
+                        if pv > 0 and abs(cv - pv) / pv > 0.05 and cv != pv:
+                            logger.info(
+                                f"[PHASE6] Contradiction detected: "
+                                f"claim={primary_num} vs chunk={cn} for metric='{metric}'"
+                            )
+                            return True
+                    except ValueError:
+                        continue
+
+    return False
 
 
 def _verify_with_search(claim: Claim) -> str:
     """
-    Fire one targeted Tavily search to verify a single-source stat/quote.
+    Fire one targeted Tavily search to verify a single-source stat.
     Returns: 'confirmed' | 'disputed' | 'single_source'
+
+    Stricter than before:
+    - Numbers must appear in the SAME CONTEXT as the claim keywords
+    - A different number for the same stat = 'disputed', not 'confirmed'
+    - Short numbers require a context window, not a bare text match
     """
-    # Build a tight verification query from the claim
-    query = f'"{claim.claim[:80]}"' if len(claim.claim) <= 80 else claim.claim[:80]
+    primary_num = _extract_primary_number(claim.claim)
+    claim_lo    = claim.claim.lower()
+
+    stopwords = {"the", "a", "an", "is", "are", "of", "in", "his", "her",
+                 "with", "for", "and", "that", "this", "was", "has", "had"}
+    claim_words = [
+        w for w in re.findall(r'\b[a-zA-Z]{4,}\b', claim_lo)
+        if w not in stopwords
+    ][:4]
+
+    query = claim.claim[:120] if len(claim.claim) > 60 else f'"{claim.claim[:80]}"'
 
     try:
         from tavily import TavilyClient
         client = TavilyClient(api_key=_get_tavily_key())
-        response = client.search(query=query, search_depth="basic", max_results=3)
-        results = response.get("results", [])
+        response = client.search(query=query, search_depth="basic", max_results=4)
+        results  = response.get("results", [])
 
         if not results:
             return "single_source"
 
-        # Check if verification results support or contradict
-        claim_lo = claim.claim.lower()
-        numbers = re.findall(r'\d+\.?\d*', claim_lo)
-
-        supporting = 0
+        supporting    = 0
         contradicting = 0
 
         for r in results:
-            text = (r.get("content", "") + r.get("title", "")).lower()
-            # Skip if it's the same source
+            # Skip the original source
             if claim.source_url and claim.source_url in r.get("url", ""):
                 continue
-            if numbers:
-                if any(n in text for n in numbers):
-                    supporting += 1
-            else:
-                # For non-number claims, check keyword overlap
-                key_words = [w for w in claim_lo.split() if len(w) > 4][:5]
-                if sum(1 for w in key_words if w in text) >= 3:
+
+            text = (r.get("content", "") + " " + r.get("title", "")).lower()
+
+            if primary_num:
+                # Find the primary number in this result text
+                num_lo = primary_num.lower()
+
+                # Require contextual match — number must appear near a claim keyword
+                found_in_context = False
+                contradicted     = False
+
+                for m in re.finditer(r'\b' + re.escape(num_lo) + r'\b', text):
+                    start  = max(0, m.start() - 100)
+                    end    = min(len(text), m.end() + 100)
+                    window = text[start:end]
+                    if any(w in window for w in claim_words):
+                        found_in_context = True
+                        break
+
+                # Also look for the same metric with a DIFFERENT number
+                metric_words_in_claim = re.findall(
+                    r'\b(average|economy|wickets?|strike\s+rate|runs?\s+per\s+(over|wicket)|appearances?)\b',
+                    claim_lo, re.IGNORECASE
+                )
+                for metric_match in metric_words_in_claim:
+                    metric = metric_match[0].lower()
+                    if metric not in text:
+                        continue
+                    for mm in re.finditer(re.escape(metric), text):
+                        ws  = max(0, mm.start() - 40)
+                        we  = min(len(text), mm.end() + 40)
+                        win = text[ws:we]
+                        alt_nums = re.findall(r'\b\d+\.?\d*\b', win)
+                        for an in alt_nums:
+                            try:
+                                av = float(an)
+                                pv = float(primary_num)
+                                if pv > 0 and abs(av - pv) / pv > 0.05 and av != pv:
+                                    contradicted = True
+                                    logger.info(
+                                        f"[PHASE6-SEARCH] Contradiction in search result: "
+                                        f"claim={primary_num} result_says={an} metric={metric}"
+                                    )
+                                    break
+                            except ValueError:
+                                continue
+                        if contradicted:
+                            break
+
+                if contradicted:
+                    contradicting += 1
+                elif found_in_context:
                     supporting += 1
 
+            else:
+                # No number — keyword overlap check
+                keyword_hits = sum(1 for w in claim_words if w in text)
+                if keyword_hits >= 3:
+                    supporting += 1
+
+        # Decision logic:
+        # contradictions > supporting → disputed
+        # supporting >= 1 and no contradictions → confirmed
+        # else → single_source
+        if contradicting > 0 and contradicting >= supporting:
+            return "disputed"
         if supporting >= 1:
             return "confirmed"
         return "single_source"
@@ -850,27 +1060,36 @@ def _verify_with_search(claim: Claim) -> str:
 
 def verify_claims(claims: list[Claim], chunks: list[dict]) -> dict[str, list[Claim]]:
     """
-    Phase 6: Verify claims and bucket them.
+    Phase 6: Verify claims and bucket them into confirmed / single_source / disputed.
 
-    Returns dict with keys: 'confirmed', 'single_source', 'disputed'
-    Only stats and quotes go through verification.
-    General and event claims pass through as single_source.
+    Improvements over previous version:
+    - _cross_check_in_chunks: contextual window match, domain deduplication
+    - _check_contradiction: detects conflicting values for the same stat
+    - _verify_with_search: contextual number matching + contradiction detection
+    - Disputed claims from either check go to 'disputed' bucket
     """
-    confirmed = []
+    confirmed     = []
     single_source = []
-    disputed = []
+    disputed      = []
 
-    verification_searches = 0
-    MAX_VERIFICATION_SEARCHES = 4  # hard cap to control credits
+    verification_searches    = 0
+    MAX_VERIFICATION_SEARCHES = 4
 
     for claim in claims:
         if claim.claim_type in ("stat", "quote"):
-            # Step 1: free cross-check within existing chunks
+
+            # Step 0: contradiction check within existing chunks (free, instant)
+            if _check_contradiction(claim, chunks):
+                disputed.append(claim)
+                logger.info(f"[PHASE6] Disputed (contradiction): {claim.claim[:60]}")
+                continue
+
+            # Step 1: free cross-check — does this value appear in 2+ domains?
             if _cross_check_in_chunks(claim, chunks):
                 confirmed.append(claim)
                 continue
 
-            # Step 2: paid verification search (only for high-confidence, important claims)
+            # Step 2: paid search verification (capped)
             if (
                 claim.confidence >= 0.7
                 and verification_searches < MAX_VERIFICATION_SEARCHES

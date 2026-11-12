@@ -678,6 +678,17 @@ FACT RULES
 3. If the dossier is thin — write a richer blog using analysis, pattern recognition, and opinion.
    A great blog does not need 20 statistics. It needs one original idea developed deeply.
 
+4. CLAIM GROUNDING — quotes and named events must be real.
+   Every quote attributed to a real person MUST appear in the dossier.
+   If you do not have a real verified quote — write what they DID, not what they SAID.
+   WRONG: "Warner described facing Bumrah as 'standing on a tightrope'"
+   RIGHT: "Warner's body language at the crease against Bumrah tells its own story — feet never fully committed, weight never fully shifted"
+   WRONG: "In the 2024 IPL semi-final, Bumrah bowled a 19-run over..."
+   RIGHT: "In high-pressure death overs, Bumrah has repeatedly turned potential 15-run overs into two-run nightmares"
+   A fabricated quote from a real person is not creative writing — it is defamation.
+   A fabricated match result is not narrative — it is misinformation.
+   When in doubt, describe the PATTERN, not the specific invented instance.
+
 ═══════════════════════════════════════
 THE ONE TEST
 ═══════════════════════════════════════
@@ -788,7 +799,7 @@ FIXED: [fixed sentence]
         logger.warning(f"[AUDIT] LLM fix call failed: {e} — keeping original blog")
         return blog
 
-    # ── Apply fixes back to the blog ──────────────────────────────────────────
+    # ── Apply number fixes back to the blog ───────────────────────────────────
     corrected_blog = blog
     for block in raw.strip().split("\n\n"):
         lines = block.strip().split("\n")
@@ -797,8 +808,136 @@ FIXED: [fixed sentence]
         if orig_line and fixed_line and orig_line != fixed_line:
             corrected_blog = corrected_blog.replace(orig_line, fixed_line, 1)
 
-    logger.info(f"[AUDIT] Done | duration={time.time()-start:.1f}s")
+    logger.info(f"[AUDIT] Number fixes applied | duration={time.time()-start:.1f}s")
+
+    # ── Step 3: Named claims and attributed quotes audit ─────────────────────
+    # Extract sentences containing:
+    #   a) Quoted speech attributed to a real person  ("X said...", "X described...")
+    #   b) Named specific events ("In the 2024 IPL semi-final...", "During the World Cup final against...")
+    # Cross-check each against the dossier. If not found — fix it.
+    corrected_blog = _audit_named_claims(corrected_blog, dossier, topic)
+
+    logger.info(f"[AUDIT] Done | total_duration={time.time()-start:.1f}s")
     return corrected_blog
+
+
+def _audit_named_claims(blog: str, dossier: str, topic: str) -> str:
+    """
+    Step 3 of audit_facts.
+
+    Detects two dangerous hallucination types:
+    1. Attributed quotes — sentences where a named person is quoted directly
+       e.g. 'Warner described it as "standing on a tightrope"'
+    2. Hyper-specific named events — sentences anchoring a claim to a specific
+       named match, year, and outcome that may have been invented
+       e.g. 'In the 2024 IPL semi-final, Bumrah bowled a 19-run over'
+
+    For each suspicious sentence, checks if the core claim exists in the dossier.
+    If not found — sends only those sentences to the LLM to generalize.
+    Leaves everything else untouched.
+    """
+    import re as _re
+
+    if not dossier or not dossier.strip():
+        logger.info("[AUDIT-CLAIMS] No dossier — skipping named claims audit")
+        return blog
+
+    dossier_lower = dossier.lower()
+
+    # ── Pattern 1: Attributed quotes ─────────────────────────────────────────
+    # Matches: Name + said/described/called/noted/wrote/told/explained + quote
+    quote_attribution = _re.compile(
+        r'(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+'
+        r'(?:said|described|called|noted|wrote|told|explained|stated|admitted|revealed|claimed|added|replied)'
+        r'[^.!?]*["\u201c\u2018][^"\u201d\u2019]{5,}["\u201d\u2019]',
+        _re.IGNORECASE
+    )
+
+    # ── Pattern 2: Hyper-specific named events ────────────────────────────────
+    # Matches: "In the 2023 World Cup final", "During the 2024 IPL semi-final"
+    named_event = _re.compile(
+        r'(?:In|During|At)\s+the\s+(?:\d{4}\s+)?'
+        r'(?:IPL|World Cup|Champions Trophy|T20I|ODI|Test|Grand Prix|'
+        r'Premier League|NBA|Super Bowl|Ashes|series|final|semi-final|quarter-final)'
+        r'[^.!?]*',
+        _re.IGNORECASE
+    )
+
+    # Split blog into sentences for targeted scanning
+    sentences = _re.split(r'(?<=[.!?])\s+', blog)
+    suspicious: list[str] = []
+
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+
+        is_quoted = bool(quote_attribution.search(sentence))
+        is_named_event = bool(named_event.search(sentence))
+
+        if not (is_quoted or is_named_event):
+            continue
+
+        # Check if core nouns from the sentence appear in dossier
+        # Extract capitalized words (likely proper nouns / names)
+        proper_nouns = _re.findall(r'\b[A-Z][a-z]{2,}\b', sentence)
+        # Check if at least 2 proper nouns from this sentence appear in dossier
+        matched = sum(1 for noun in proper_nouns if noun.lower() in dossier_lower)
+
+        if matched < 2:
+            # Likely invented — flag for fixing
+            suspicious.append(sentence)
+
+    if not suspicious:
+        logger.info("[AUDIT-CLAIMS] No suspicious named claims found")
+        return blog
+
+    # Deduplicate
+    suspicious = list(dict.fromkeys(suspicious))
+    logger.info(f"[AUDIT-CLAIMS] Found {len(suspicious)} suspicious named claims/quotes")
+
+    sentences_block = "\n".join(f"- {s}" for s in suspicious[:10])  # cap at 10
+
+    prompt = f"""
+You are a fact-safety editor. The sentences below contain attributed quotes or specific named events that could not be verified against the research dossier.
+
+Topic: {topic}
+
+Your job: rewrite each sentence to remove the unverifiable specific detail while keeping the underlying point.
+
+Rules:
+- Remove direct quotes from named people unless the quote appears verbatim in the dossier
+- Replace hyper-specific named events ("In the 2024 IPL semi-final...") with pattern-based language ("In high-pressure death overs..." or "Across multiple high-stakes matches...")
+- Keep the analytical point — just remove the invented specificity
+- Do NOT add new facts
+- Do NOT change sentences that are clearly fine (opinions, general descriptions)
+
+Sentences to fix:
+{sentences_block}
+
+Format — one block per sentence:
+ORIGINAL: [original sentence]
+FIXED: [fixed sentence]
+"""
+
+    try:
+        raw = _invoke(prompt, temperature=0.0)
+        logger.info("[AUDIT-CLAIMS] LLM fix call succeeded")
+    except Exception as e:
+        logger.warning(f"[AUDIT-CLAIMS] LLM fix call failed: {e} — keeping original")
+        return blog
+
+    # Apply fixes
+    fixed_blog = blog
+    for block in raw.strip().split("\n\n"):
+        lines = block.strip().split("\n")
+        orig = next((l[len("ORIGINAL:"):].strip() for l in lines if l.startswith("ORIGINAL:")), None)
+        fixed = next((l[len("FIXED:"):].strip() for l in lines if l.startswith("FIXED:")), None)
+        if orig and fixed and orig != fixed:
+            fixed_blog = fixed_blog.replace(orig, fixed, 1)
+            logger.info(f"[AUDIT-CLAIMS] Fixed: '{orig[:60]}...' → '{fixed[:60]}...'")
+
+    return fixed_blog
 
 
 @traceable(name="editorial_critic")

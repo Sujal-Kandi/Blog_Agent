@@ -1249,7 +1249,7 @@ def run_research_engine(topic: str, competitor_gap: str, invoke_fn) -> tuple[str
 
     if not all_results:
         logger.warning("[RESEARCH ENGINE] No search results — returning empty dossier")
-        return "", ""
+        return "", "", ClaimRegistry()
 
     t3 = time.time()
     top_sources = rank_and_select(all_results, topic, freshness_required, top_n=4)

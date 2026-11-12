@@ -1,4 +1,5 @@
 import os  #read env variables like API Keys
+import re   # regex — used by forbidden_pattern_filter and grounding_score
 import time #used for timing how long each step takes 
 import uuid #generates unique IDs (imported but not actually used in this file)
 import logging #writes logs to terminal and file 
@@ -36,7 +37,7 @@ from langchain_groq import ChatGroq
 from groq import AuthenticationError, RateLimitError
 from tools import web_search
 from langsmith import traceable
-from research_engine import run_research_engine
+from research_engine import run_research_engine, ClaimRegistry
 
 
 GROQ_KEYS = [
@@ -158,6 +159,304 @@ LENGTH_GUIDE = {
 }
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 2 — Forbidden Pattern Filter (pure Python, zero LLM, <0.05s)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Patterns that are ABSOLUTELY FORBIDDEN unless backed by a registered CLAIM-ID.
+# Each entry: (compiled_regex, human_label, severity)
+# severity "hard" = sentence is rewritten by LLM to pattern language
+# severity "soft" = flagged for grounding_score only, not auto-rewritten
+_FORBIDDEN_PATTERNS = [
+    # Specific chase/score targets: "needed 130 to win", "required 243 runs"
+    (re.compile(r'\b(needed|required|chasing|chased)\s+\d[\d,]*\s+(runs?|to\s+win)', re.IGNORECASE),
+     "specific_chase_target", "hard"),
+    # Specific innings scores: "scored 91", "made 147 off 79 balls"
+    (re.compile(r'\b(scored?|made|hit)\s+\d[\d,]*(?:\s+(?:runs?|not\s+out|off\s+\d+\s+balls?))?\b', re.IGNORECASE),
+     "specific_innings_score", "hard"),
+    # Match results: "won by 5 runs", "lost by 3 wickets"
+    (re.compile(r'\b(won|lost)\s+by\s+\d[\d,]*\s+(runs?|wickets?)\b', re.IGNORECASE),
+     "match_result", "hard"),
+    # Specific over outcomes: "19-run over", "bowled a 2-run over"
+    (re.compile(r'\b\d[\d]*[\s-]run\s+over\b', re.IGNORECASE),
+     "over_outcome", "hard"),
+    # Attributed direct quotes: 'Dhoni said "..."'
+    (re.compile(
+        r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s+'
+        r'(?:said|described|called|noted|wrote|told|explained|stated|admitted|revealed|claimed|added|replied)'
+        r'\s+["\u201c\u2018][^"\u201d\u2019]{5,}["\u201d\u2019]',
+        re.IGNORECASE),
+     "attributed_quote", "hard"),
+    # Named event + specific score in same sentence
+    (re.compile(
+        r'\b(?:In|During|At)\s+the\s+(?:\d{4}\s+)?'
+        r'(?:IPL|World\s+Cup|Champions\s+Trophy|T20I?|ODI|Test|series|final|semi-final)'
+        r'[^.!?]*\d[\d,]*\s*(?:runs?|wickets?|balls?|overs?)\b',
+        re.IGNORECASE),
+     "named_event_with_score", "hard"),
+    # Fabricated percentages in performance context
+    (re.compile(r'\b\d{1,3}\s*%\s+of\s+the\s+time\b', re.IGNORECASE),
+     "fabricated_percentage", "soft"),
+]
+
+
+def forbidden_pattern_filter(
+    blog: str,
+    registry: "ClaimRegistry",
+    topic: str,
+) -> tuple[str, list[dict]]:
+    """
+    Phase 2 — Pure Python forbidden pattern filter.
+
+    Scans every sentence for structurally unverifiable patterns.
+    For each match, checks if the value is in the ClaimRegistry.
+    If NOT grounded → queues sentence for LLM rewrite to pattern language.
+
+    Returns:
+        (filtered_blog, violations)
+    """
+    _check_cancelled()
+    logger.info(f"[FILTER] Starting forbidden pattern filter | topic='{topic[:60]}'")
+    start = time.time()
+
+    grounded = registry.all_grounded_values()
+    sentences = re.split(r'(?<=[.!?])\s+', blog)
+    violations: list[dict] = []
+    sentences_to_fix: list[tuple[int, str, str]] = []  # (idx, sentence, label)
+
+    for idx, sentence in enumerate(sentences):
+        s = sentence.strip()
+        if not s or s.startswith("#"):
+            continue
+
+        for pattern, label, severity in _FORBIDDEN_PATTERNS:
+            if not pattern.search(s):
+                continue
+
+            # Extract numbers in this sentence
+            nums_in_sentence = {n.replace(",", "").lower() for n in re.findall(r'\b\d[\d,]*(?:\.\d+)?\b', s)}
+
+            # Extract named event phrases
+            event_phrases = re.findall(
+                r'\b\d{4}\s+(?:IPL|World\s+Cup|Champions\s+Trophy|T20I?|ODI|Test|series|final|semi-final)\b',
+                s, re.IGNORECASE
+            )
+
+            ungrounded_nums = nums_in_sentence - grounded
+            ungrounded_events = [e for e in event_phrases if e.lower() not in grounded]
+
+            # Attributed quotes are always flagged — quote text can't be in grounded values
+            is_grounded = (
+                label != "attributed_quote"
+                and (severity == "soft" or not ungrounded_nums)
+                and not ungrounded_events
+            )
+
+            if not is_grounded:
+                violations.append({
+                    "sentence": s,
+                    "label": label,
+                    "severity": severity,
+                    "ungrounded_nums": list(ungrounded_nums),
+                    "ungrounded_events": ungrounded_events,
+                })
+                if severity == "hard":
+                    sentences_to_fix.append((idx, s, label))
+            break  # one violation per sentence is enough
+
+    if not violations:
+        logger.info(f"[FILTER] Clean — no violations | duration={time.time()-start:.1f}s")
+        return blog, []
+
+    hard = [v for v in violations if v["severity"] == "hard"]
+    soft = [v for v in violations if v["severity"] == "soft"]
+    logger.info(f"[FILTER] {len(violations)} violations | hard={len(hard)} soft={len(soft)}")
+    for v in violations:
+        logger.info(f"  [{v['severity'].upper()}] [{v['label']}] {v['sentence'][:80]}")
+
+    if not sentences_to_fix:
+        return blog, violations
+
+    # ── LLM rewrite — only hard violations ───────────────────────────────────
+    sentences_block = "\n".join(f"- [{lbl}] {sent}" for _, sent, lbl in sentences_to_fix[:12])
+
+    prompt = f"""
+You are a fact-safety editor. The sentences below contain unverified specific claims
+(match scores, chase targets, attributed quotes, specific over outcomes) that were NOT
+found in the verified research dossier for this topic.
+
+Topic: {topic}
+
+Rewrite each sentence to remove the unverifiable specific detail while keeping the analytical point.
+
+REWRITE RULES (use these as templates):
+- "India needed 130 to win, Dhoni scored 91"       → "In that final, Dhoni anchored the chase with a measured, match-winning innings"
+- "He scored 91 off 61 balls"                       → "He constructed his innings ball by ball, accelerating only when the equation demanded it"
+- "won by 5 runs"                                   → "won in dramatic fashion"
+- 'Dhoni said "I always stay calm"'                 → "Dhoni's actions in those moments spoke louder than any post-match comment"
+- "In the 2013 CT final, India needed 130..."       → "In high-pressure knockout finals, Dhoni's approach..."
+
+The rewritten sentence must:
+1. Keep the ANALYTICAL POINT
+2. Remove the SPECIFIC INVENTED DETAIL (exact score, exact quote, exact result)
+3. Sound natural and confident — not hedged, not vague
+
+Sentences to fix:
+{sentences_block}
+
+Format — one block per sentence:
+ORIGINAL: [original sentence]
+FIXED: [rewritten sentence]
+"""
+
+    try:
+        raw = _invoke(prompt, temperature=0.0)
+    except Exception as e:
+        logger.warning(f"[FILTER] LLM rewrite failed: {e} — keeping original")
+        return blog, violations
+
+    fixed_blog = blog
+    for block in raw.strip().split("\n\n"):
+        lines_b = block.strip().split("\n")
+        orig  = next((l[len("ORIGINAL:"):].strip() for l in lines_b if l.upper().startswith("ORIGINAL:")), None)
+        fixed = next((l[len("FIXED:"):].strip()    for l in lines_b if l.upper().startswith("FIXED:")),    None)
+        if orig and fixed and orig != fixed:
+            fixed_blog = fixed_blog.replace(orig, fixed, 1)
+            logger.info(f"[FILTER] Fixed: '{orig[:55]}' → '{fixed[:55]}'")
+
+    logger.info(f"[FILTER] Done | duration={time.time()-start:.1f}s | rewrites={len(sentences_to_fix)}")
+    return fixed_blog, violations
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 3 — Grounding Score (per-section, targeted LLM rewrite for low scorers)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def grounding_score(
+    blog: str,
+    registry: "ClaimRegistry",
+    topic: str,
+    threshold: float = 0.60,
+) -> tuple[str, dict]:
+    """
+    Phase 3 — Per-section grounding score.
+
+    For every ### section:
+    1. Count sentences that contain specific claims (numbers, named events).
+    2. Count how many have all their numbers present in the ClaimRegistry.
+    3. score = grounded_sentences / total_specific_sentences
+    4. Sections below threshold → targeted LLM rewrite.
+
+    Returns:
+        (scored_blog, report)   report = {section_heading: score}
+    """
+    _check_cancelled()
+    logger.info(f"[GROUNDING] Starting grounding score | topic='{topic[:60]}'")
+    start = time.time()
+
+    grounded_vals = registry.all_grounded_values()
+
+    # Split blog into (heading, body) pairs by ### headings
+    section_pat = re.compile(r'(^###\s+.+$)', re.MULTILINE)
+    parts = section_pat.split(blog)
+    preamble = parts[0] if parts else ""
+
+    sections: list[list[str]] = []   # [heading, body] — mutable for in-place rewrite
+    i = 1
+    while i < len(parts) - 1:
+        sections.append([parts[i], parts[i + 1] if i + 1 < len(parts) else ""])
+        i += 2
+
+    if not sections:
+        logger.info("[GROUNDING] No ### sections — skipping grounding score")
+        return blog, {}
+
+    # Pattern: sentence contains a specific claim (number or named event)
+    specific_pat = re.compile(
+        r'\b\d[\d,]*(?:\.\d+)?\s*(?:%|runs?|wickets?|matches?|balls?|overs?|years?|goals?|titles?)?\b'
+        r'|\b(?:In|During|At)\s+the\s+(?:\d{4}\s+)?'
+        r'(?:IPL|World\s+Cup|Champions\s+Trophy|T20I?|ODI|Test|final|semi-final)\b',
+        re.IGNORECASE,
+    )
+
+    report: dict[str, float] = {}
+    sections_to_rewrite: list[tuple[int, float]] = []  # (section_idx, score)
+
+    for idx, (heading, body) in enumerate(sections):
+        body_sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', body) if s.strip()]
+        specific_sents = [s for s in body_sents if specific_pat.search(s)]
+
+        if not specific_sents:
+            report[heading.strip()] = 1.0
+            continue
+
+        grounded_count = sum(
+            1 for s in specific_sents
+            if not (
+                {n.replace(",", "").lower() for n in re.findall(r'\b\d[\d,]*(?:\.\d+)?\b', s)}
+                - grounded_vals
+            )
+        )
+        score = grounded_count / len(specific_sents)
+        report[heading.strip()] = round(score, 2)
+
+        if score < threshold:
+            sections_to_rewrite.append((idx, score))
+            logger.info(f"[GROUNDING] Low-score section '{heading.strip()[:55]}' score={score:.2f}")
+
+    logger.info(f"[GROUNDING] Scores: { {k[:40]: v for k, v in report.items()} }")
+
+    if not sections_to_rewrite:
+        logger.info(f"[GROUNDING] All sections pass — no rewrite | duration={time.time()-start:.1f}s")
+        return blog, report
+
+    registry_block = registry.to_writer_block()
+
+    for idx, score in sections_to_rewrite:
+        heading, body = sections[idx]
+        logger.info(f"[GROUNDING] Rewriting '{heading.strip()[:55]}' (score={score:.2f})")
+
+        prompt = f"""
+You are a precise editor rewriting one section of a blog about "{topic}".
+
+This section scored {score:.0%} on grounding — it contains specific numbers or events
+that are NOT in the verified claim registry below.
+
+YOUR TASK:
+Rewrite the section so every specific number, score, or named event either:
+  a) Comes from the CLAIM REGISTRY — cite it inline as (CLAIM-ID), or
+  b) Is replaced with pattern language that makes the same analytical point without the specific detail
+
+PRESERVE the analytical argument, voice, and approximate length. Do NOT add new facts.
+
+CLAIM REGISTRY (only these values are verified):
+{registry_block}
+
+SECTION TO REWRITE:
+{heading}
+{body}
+
+Return ONLY the rewritten section (heading line + body). No commentary.
+"""
+        try:
+            rewritten = _invoke(prompt, temperature=0.2).strip()
+            # Strip the heading if LLM duplicated it
+            if rewritten.startswith(heading.strip()):
+                rewritten = rewritten[len(heading.strip()):].strip()
+            sections[idx][1] = rewritten
+            logger.info(f"[GROUNDING] Section rewritten OK")
+        except Exception as e:
+            logger.warning(f"[GROUNDING] Rewrite failed: {e} — keeping original")
+
+    # Reassemble
+    rebuilt = preamble
+    for heading, body in sections:
+        rebuilt += f"\n{heading}\n\n{body}"
+
+    logger.info(f"[GROUNDING] Done | duration={time.time()-start:.1f}s | rewrites={len(sections_to_rewrite)}")
+    return rebuilt.strip(), report
+
+
 def fix_cliches(blog: str, topic: str) -> str:
     found = [c for c in CLICHES if c.lower() in blog.lower()]
     if not found:
@@ -276,19 +575,20 @@ Be specific. No fluff. This will be used as a writing brief.
 
 
 @traceable(name="research")
-def research(topic: str, competitor_gap: str = "") -> tuple[str, str]:
+def research(topic: str, competitor_gap: str = "") -> tuple[str, str, ClaimRegistry]:
     """
     Full 6-phase research engine.
-    Returns (dossier_str, raw_facts_str).
-    dossier_str   — structured evidence dossier for write_blog
-    raw_facts_str — flat facts list for generate_citations
+    Returns (dossier_str, raw_facts_str, claim_registry).
+    dossier_str    — structured evidence dossier for write_blog
+    raw_facts_str  — flat facts list for generate_citations
+    claim_registry — ClaimRegistry object for forbidden_pattern_filter
     """
     _check_cancelled()
     logger.info(f"[RESEARCH] Starting research engine | topic='{topic[:60]}'")
     start = time.time()
-    dossier, raw_facts = run_research_engine(topic, competitor_gap, _invoke)
+    dossier, raw_facts, registry = run_research_engine(topic, competitor_gap, _invoke)
     logger.info(f"[RESEARCH] Done | duration={time.time()-start:.1f}s")
-    return dossier, raw_facts
+    return dossier, raw_facts, registry
 
 
 @traceable(name="extract_facts")
@@ -512,7 +812,7 @@ Then write ONLY the full text of the best ending. No labels. No "FINAL TEXT:". J
 
 
 @traceable(name="unified_writer")
-def write_blog(topic: str, audience: str, plan: str, research_data: str, memory: str, length: str = "medium", gap: str = "", facts: str | None = None, hook: str = "", insights: str = "") -> str:
+def write_blog(topic: str, audience: str, plan: str, research_data: str, memory: str, length: str = "medium", gap: str = "", facts: str | None = None, hook: str = "", insights: str = "", registry: "ClaimRegistry | None" = None) -> str:
     """
     Unified Writer — Paul Graham + Tim Urban + George Orwell combined.
     Adaptive by topic type — reading topic type from Strategy Planner output.
@@ -614,6 +914,12 @@ Don't just mention all three and move on — choose one as the central argument 
             "Write like a smart friend who knows this topic well, not a textbook."
         )
 
+    # ── Claim Registry block for writer ──────────────────────────────────────
+    if registry is not None and registry.entries:
+        registry_section = registry.to_writer_block()
+    else:
+        registry_section = "CLAIM REGISTRY: No verified claims available — write without specific numbers, scores, or attributed quotes."
+
     prompt = f"""
 {voice}
 
@@ -686,34 +992,31 @@ STRUCTURE
   The reader should feel the section start, not be told it is starting.
 
 ═══════════════════════════════════════
-FACT RULES
+FACT RULES — CLAIM-FIRST WRITING
 ═══════════════════════════════════════
 
-1. NEVER invent a specific match, game, date, score or event not in the dossier.
-   WRONG: "In the Eden Gardens Test on day four, Rohit faced a full-toss..."
-   RIGHT: "When Rohit faces a full-toss, his back foot is already lifting..."
-   One fakes a source. The other describes a real pattern honestly.
+{registry_section}
 
-2. Every specific NUMBER must come from the dossier. If not there — write the insight without the number.
+BLACKLISTED FROM MEMORY — these claim types CANNOT be written from your training data.
+They can ONLY appear if a CLAIM-ID exists for them in the registry above:
+  ✗ Specific match scores      ("Dhoni scored 91", "India needed 130 to win")
+  ✗ Specific match results     ("won by 5 runs", "lost by 3 wickets")
+  ✗ Over-by-over outcomes      ("19-run over", "bowled a 2-run over")
+  ✗ Attributed direct quotes   ('Dhoni said "I always stay calm"')
+  ✗ Named event + scoreline    ("In the 2013 CT final, India needed 130...")
 
-3. If the dossier is thin — write a richer blog using analysis, pattern recognition, and opinion.
-   A great blog does not need 20 statistics. It needs one original idea developed deeply.
-   CRITICAL: "thin dossier" means write FEWER numbers, not invented ones.
-   If a stat is not in CONFIRMED FACTS, describe the pattern without the number.
-   WRONG: "his average in chases is 65" (not in dossier)
-   RIGHT: "his average in chases is notably higher than his overall career average"
-   The second version is honest, still informative, and cannot be fact-checked wrong.
+If no CLAIM-ID exists for a specific detail — describe the PATTERN instead:
+  WRONG: "In the 2013 Champions Trophy final, India needed 130 to win and Dhoni scored 91"
+  RIGHT: "In that high-pressure final, Dhoni constructed his innings with the patience of someone who had already decided the outcome"
 
-4. CLAIM GROUNDING — quotes and named events must be real.
-   Every quote attributed to a real person MUST appear in the dossier.
-   If you do not have a real verified quote — write what they DID, not what they SAID.
-   WRONG: "Warner described facing Bumrah as 'standing on a tightrope'"
-   RIGHT: "Warner's body language at the crease against Bumrah tells its own story — feet never fully committed, weight never fully shifted"
-   WRONG: "In the 2024 IPL semi-final, Bumrah bowled a 19-run over..."
-   RIGHT: "In high-pressure death overs, Bumrah has repeatedly turned potential 15-run overs into two-run nightmares"
-   A fabricated quote from a real person is not creative writing — it is defamation.
-   A fabricated match result is not narrative — it is misinformation.
-   When in doubt, describe the PATTERN, not the specific invented instance.
+  WRONG: 'Warner described facing Bumrah as "standing on a tightrope"'
+  RIGHT: "Warner's footwork against Bumrah tells its own story — never fully committed, always recalculating"
+
+  WRONG: "his average in chases is 65.3"  (no CLAIM-ID)
+  RIGHT: "his average in chases is notably higher than his overall career average"  (pattern)
+
+RULE: If a stat IS in the registry — use it confidently, cite CLAIM-ID in parentheses.
+RULE: If a stat is NOT in the registry — no number. The analytical point still stands without it.
 
 ═══════════════════════════════════════
 THE ONE TEST

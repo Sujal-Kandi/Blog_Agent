@@ -9,7 +9,7 @@ os.environ["LANGCHAIN_ENDPOINT"]   = os.getenv("LANGCHAIN_ENDPOINT", "https://ap
 os.environ["LANGCHAIN_API_KEY"]    = os.getenv("LANGCHAIN_API_KEY", "")
 os.environ["LANGCHAIN_PROJECT"]    = os.getenv("LANGCHAIN_PROJECT", "Blog_Agent")
 
-from typing import Callable, ParamSpec, TypeVar, TypedDict
+from typing import Callable, ParamSpec, TypeVar, TypedDict, Any
 from langgraph.graph import StateGraph, END
 
 from agent import (
@@ -22,6 +22,8 @@ from agent import (
     generate_ending,
     write_blog,
     audit_facts,
+    forbidden_pattern_filter,
+    grounding_score,
     critique_and_rewrite,
     targeted_revision,
     fix_cliches,
@@ -33,6 +35,7 @@ from agent import (
     reset_pipeline,
 )
 from memory import retrieve_memory, store_memory
+from research_engine import ClaimRegistry
 
 
 # ── State ────────────────────────────────────────────────────────────────────
@@ -47,17 +50,20 @@ class BlogState(TypedDict):
     research_data: str
     facts: str
     memory: str
+    claim_registry: Any   # ClaimRegistry object from research_engine
 
     # new elite nodes
-    insights: str       # extracted non-obvious ideas from research
-    hook: str           # pre-generated opening sentence
+    insights: str
+    hook: str
 
     draft: str
-    critique: str       # human rubric critic output — read by quality router
+    critique: str
     final_blog: str
     seo: dict
     extras: dict
     scores: dict
+    filter_violations: list   # violations found by forbidden_pattern_filter
+    grounding_report: dict    # per-section grounding scores
 
     iteration: int
     max_iterations: int
@@ -89,12 +95,12 @@ def node_plan(state: BlogState) -> BlogState:
 
 @_guarded
 def node_research(state: BlogState) -> dict:
-    # research() now returns (dossier, raw_facts)
-    # gap is already computed in parallel by node_competitor_gap
-    dossier, raw_facts = research(state["topic"], state.get("gap", ""))
+    # research() now returns (dossier, raw_facts, claim_registry)
+    dossier, raw_facts, registry = research(state["topic"], state.get("gap", ""))
     return {
         "research_data": dossier,
         "facts": raw_facts,
+        "claim_registry": registry,
     }
 
 @_guarded
@@ -243,6 +249,7 @@ def node_write(state: BlogState) -> BlogState:
             facts=facts if facts else research_data,
             hook=state.get("hook", ""),
             insights=state.get("insights", ""),
+            registry=state.get("claim_registry"),
         )
         word_count = len(draft.split())
         if word_count >= threshold:
@@ -325,6 +332,85 @@ def node_audit_facts(state: BlogState) -> BlogState:
 
     state["final_blog"] = audited
     return state
+
+@_guarded
+def node_forbidden_filter(state: BlogState) -> dict:
+    """
+    Phase 2 — Forbidden Pattern Filter.
+    Pure Python + one targeted LLM call only for hard violations.
+    Runs after audit_facts, before grounding_score.
+    Structurally blocks: specific scores, chase targets, attributed quotes,
+    named-event+scoreline combos that have no CLAIM-ID in the registry.
+    """
+    import logging as _logging
+    _log = _logging.getLogger("blog_agent")
+
+    registry = state.get("claim_registry")
+    if not registry:
+        _log.warning("[FILTER] No claim_registry in state — skipping forbidden filter")
+        return {"filter_violations": []}
+
+    # Skip on fallback dossiers
+    research_data = state.get("research_data", "")
+    if (
+        not research_data
+        or "NOTE: Web research returned no structured claims" in research_data
+        or "── RAW SEARCH SNIPPETS" in research_data
+    ):
+        _log.warning("[FILTER] Fallback dossier — skipping forbidden filter")
+        return {"filter_violations": []}
+
+    filtered_blog, violations = forbidden_pattern_filter(
+        state["final_blog"], registry, state["topic"]
+    )
+
+    # Safety: never shrink blog more than 10%
+    before_w = len(state["final_blog"].split())
+    after_w  = len(filtered_blog.split())
+    if after_w < before_w * 0.90:
+        _log.warning(f"[FILTER] Over-pruned ({before_w}→{after_w}) — reverting")
+        return {"filter_violations": violations}
+
+    return {"final_blog": filtered_blog, "filter_violations": violations}
+
+
+@_guarded
+def node_grounding_score(state: BlogState) -> dict:
+    """
+    Phase 3 — Grounding Score.
+    Scores every ### section by grounded_sentences / total_specific_sentences.
+    Sections below 0.60 get a targeted LLM rewrite constrained to registry values.
+    Runs after forbidden_filter, before the ending generator.
+    """
+    import logging as _logging
+    _log = _logging.getLogger("blog_agent")
+
+    registry = state.get("claim_registry")
+    if not registry:
+        _log.warning("[GROUNDING] No claim_registry — skipping grounding score")
+        return {"grounding_report": {}}
+
+    research_data = state.get("research_data", "")
+    if (
+        not research_data
+        or "NOTE: Web research returned no structured claims" in research_data
+        or "── RAW SEARCH SNIPPETS" in research_data
+    ):
+        _log.warning("[GROUNDING] Fallback dossier — skipping grounding score")
+        return {"grounding_report": {}}
+
+    scored_blog, report = grounding_score(
+        state["final_blog"], registry, state["topic"]
+    )
+
+    before_w = len(state["final_blog"].split())
+    after_w  = len(scored_blog.split())
+    if after_w < before_w * 0.80:
+        _log.warning(f"[GROUNDING] Over-pruned ({before_w}→{after_w}) — reverting")
+        return {"grounding_report": report}
+
+    return {"final_blog": scored_blog, "grounding_report": report}
+
 
 @_guarded
 def node_critique_rewrite(state: BlogState) -> BlogState:
@@ -499,11 +585,13 @@ def build_graph():
     g.add_node("research",               node_research)
     g.add_node("extract_facts",          node_extract_facts)
     g.add_node("retrieve_memory",        node_retrieve_memory)
-    g.add_node("insights",               node_insights)       # NEW — extract non-obvious ideas
-    g.add_node("hook",                   node_hook)           # NEW — generate opening sentence
+    g.add_node("insights",               node_insights)
+    g.add_node("hook",                   node_hook)
     g.add_node("write",                  node_write)
     g.add_node("audit_facts",            node_audit_facts)
-    g.add_node("ending",                 node_ending)         # NEW — replace closing paragraph
+    g.add_node("forbidden_filter",       node_forbidden_filter)   # Phase 2 — NEW
+    g.add_node("grounding_score",        node_grounding_score)    # Phase 3 — NEW
+    g.add_node("ending",                 node_ending)
     g.add_node("critic",                 node_critique_rewrite)
     g.add_node("targeted_revision",      node_targeted_revision)
     g.add_node("post_revision_check",    node_post_revision_check)
@@ -529,8 +617,12 @@ def build_graph():
     g.add_edge(["insights", "hook"], "write")
 
     g.add_edge("write",            "audit_facts")
-    # After audit: ending generator sharpens the closing paragraph
-    g.add_edge("audit_facts",      "ending")
+    # After audit: forbidden filter blocks ungrounded specific claims (Phase 2)
+    g.add_edge("audit_facts",      "forbidden_filter")
+    # After filter: grounding score rewrites low-scoring sections (Phase 3)
+    g.add_edge("forbidden_filter", "grounding_score")
+    # After grounding: ending generator sharpens the closing paragraph
+    g.add_edge("grounding_score",  "ending")
     g.add_edge("ending",           "critic")
 
     # Quality Router — pure Python, zero LLM
@@ -565,24 +657,27 @@ def run_blog_pipeline(topic: str, audience: str, length: str = "medium") -> dict
     reset_pipeline()  # clear any previous cancel state before starting
 
     initial_state: BlogState = {
-        "topic":          topic,
-        "audience":       audience,
-        "length":         length,
-        "plan":           "",
-        "gap":            "",
-        "research_data":  "",
-        "facts":          "",
-        "memory":         "",
-        "insights":       "",
-        "hook":           "",
-        "draft":          "",
-        "critique":       "",
-        "final_blog":     "",
-        "seo":            {},
-        "extras":         {},
-        "scores":         {},
-        "iteration":      0,
-        "max_iterations": 1,
+        "topic":            topic,
+        "audience":         audience,
+        "length":           length,
+        "plan":             "",
+        "gap":              "",
+        "research_data":    "",
+        "facts":            "",
+        "memory":           "",
+        "claim_registry":   None,
+        "insights":         "",
+        "hook":             "",
+        "draft":            "",
+        "critique":         "",
+        "final_blog":       "",
+        "seo":              {},
+        "extras":           {},
+        "scores":           {},
+        "filter_violations": [],
+        "grounding_report": {},
+        "iteration":        0,
+        "max_iterations":   1,
     }
 
     try:

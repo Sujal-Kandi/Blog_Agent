@@ -138,6 +138,152 @@ class ResearchDossier(BaseModel):
     competitor_gap: str       # what existing articles miss
 
 
+class ClaimRegistryEntry(BaseModel):
+    """
+    A single registered claim the writer is allowed to cite.
+    Every specific stat, quote, or named event MUST have one of these.
+    The writer references claims by ID — not by memory.
+    """
+    id: str              # e.g. "CLAIM-001"
+    claim: str           # the full claim text
+    claim_type: str      # "stat" | "quote" | "event" | "general"
+    confidence: str      # "confirmed" | "single_source" | "disputed"
+    source_title: str
+    source_url: str
+    # Pre-extracted forbidden patterns that exist in this claim —
+    # used by the filter to know which pattern instances ARE grounded.
+    forbidden_matches: list[str]  # e.g. ["103.07", "2,600 runs", "2013 Champions Trophy"]
+
+
+class ClaimRegistry:
+    """
+    Structured registry of every verified claim from the research engine.
+    Passed alongside the dossier string into write_blog and the filter.
+
+    Key operations:
+      - build()         called by build_dossier() — assigns IDs to all claims
+      - to_writer_block()  compact string injected into write_blog prompt
+      - all_grounded_values()  flat set of every number/event already registered
+                               — used by forbidden_pattern_filter for O(1) lookup
+    """
+
+    def __init__(self):
+        self.entries: list[ClaimRegistryEntry] = []
+        self._grounded_values: set[str] | None = None   # lazy cache
+
+    def build(self, verified: dict[str, list["Claim"]]) -> None:
+        """Populate registry from verify_claims() output."""
+        self.entries.clear()
+        self._grounded_values = None
+        counter = 1
+        for confidence_level in ("confirmed", "single_source", "disputed"):
+            for claim in verified.get(confidence_level, []):
+                entry = self._make_entry(claim, confidence_level, counter)
+                self.entries.append(entry)
+                counter += 1
+
+    def _make_entry(self, claim: "Claim", confidence: str, n: int) -> ClaimRegistryEntry:
+        import re as _re
+        cid = f"CLAIM-{n:03d}"
+
+        # Extract the specific values in this claim that would match
+        # the forbidden patterns — so the filter knows they're grounded.
+        text = claim.claim
+        forbidden_matches: list[str] = []
+
+        # Numbers with units
+        for m in _re.finditer(
+            r'\b\d[\d,]*(?:\.\d+)?\s*(?:%|runs|wickets|matches|years|km|mph|goals|titles|sixes|balls|overs)?\b',
+            text
+        ):
+            val = m.group(0).strip()
+            if val:
+                forbidden_matches.append(val.lower())
+
+        # Named events: "2013 Champions Trophy", "2011 World Cup", etc.
+        for m in _re.finditer(
+            r'\b\d{4}\s+(?:ICC\s+)?(?:IPL|World Cup|Champions Trophy|T20I|T20\s+World Cup|'
+            r'ODI|Test|Grand Prix|Premier League|NBA|Super Bowl|Ashes|series|final|semi-final|'
+            r'quarter-final)\b',
+            text, _re.IGNORECASE
+        ):
+            forbidden_matches.append(m.group(0).lower())
+
+        # Specific scores: "91 off 61 balls", "scored 90"
+        for m in _re.finditer(r'\b(?:scored?|made|hit)\s+\d+', text, _re.IGNORECASE):
+            forbidden_matches.append(m.group(0).lower())
+
+        return ClaimRegistryEntry(
+            id=cid,
+            claim=text,
+            claim_type=claim.claim_type,
+            confidence=confidence,
+            source_title=claim.source_title,
+            source_url=claim.source_url,
+            forbidden_matches=list(set(forbidden_matches)),
+        )
+
+    def to_writer_block(self) -> str:
+        """
+        Compact string for the write_blog prompt.
+        Shows each claim with its ID and confidence level.
+        Writer must cite by CLAIM-ID for any specific stat/event/quote.
+        """
+        if not self.entries:
+            return "CLAIM REGISTRY: empty — no verified claims available. Write without specific numbers."
+
+        lines = ["═══ CLAIM REGISTRY — CITE BY ID ═══",
+                 "Every specific number, score, event, or quote below has a CLAIM-ID.",
+                 "To use a claim: write it and add (CLAIM-ID) at the end of the sentence.",
+                 "If a claim has no CLAIM-ID here — describe the PATTERN, not the specific instance.",
+                 ""]
+
+        confirmed   = [e for e in self.entries if e.confidence == "confirmed"]
+        single      = [e for e in self.entries if e.confidence == "single_source"]
+        disputed    = [e for e in self.entries if e.confidence == "disputed"]
+
+        if confirmed:
+            lines.append("── CONFIRMED (safe to state as fact) ──")
+            for e in confirmed:
+                lines.append(f"  [{e.id}] [{e.claim_type.upper()}] {e.claim}")
+                lines.append(f"         Source: {e.source_title}")
+            lines.append("")
+
+        if single:
+            lines.append('── SINGLE-SOURCE (must write: "according to [source]...") ──')
+            for e in single:
+                lines.append(f"  [{e.id}] [{e.claim_type.upper()}] {e.claim}")
+                lines.append(f"         Source: {e.source_title}")
+            lines.append("")
+
+        if disputed:
+            lines.append('── DISPUTED (must write: "some sources suggest... while others...") ──')
+            for e in disputed:
+                lines.append(f"  [{e.id}] [{e.claim_type.upper()}] {e.claim}")
+            lines.append("")
+
+        lines.append("══════════════════════════════════")
+        return "\n".join(lines)
+
+    def all_grounded_values(self) -> set[str]:
+        """
+        Returns flat set of every number/event/score already in the registry.
+        Used by forbidden_pattern_filter for O(1) lookup — built once, cached.
+        """
+        if self._grounded_values is not None:
+            return self._grounded_values
+        result: set[str] = set()
+        for entry in self.entries:
+            for val in entry.forbidden_matches:
+                result.add(val.lower().strip())
+            # Also add the raw numbers from the claim text directly
+            import re as _re
+            for m in _re.finditer(r'\b\d[\d,]*(?:\.\d+)?\b', entry.claim):
+                result.add(m.group(0).replace(",", "").lower())
+        self._grounded_values = result
+        return result
+
+
 # ── Domain trust tiers ────────────────────────────────────────────────────────
 
 _TIER1_DOMAINS = {
@@ -764,23 +910,30 @@ def build_dossier(
     sources: list[dict],
     competitor_gap: str,
     topic: str,
-) -> str:
+) -> tuple[str, ClaimRegistry]:
     """
-    Build the final research dossier string for the writing engine.
-    Each fact includes full context: claim + evidence + source + date.
-    Format is explicit so the writer cannot mix up format/context.
+    Build the final research dossier string AND a ClaimRegistry for the writing engine.
+
+    Returns:
+        (dossier_str, claim_registry)
+        dossier_str    — structured evidence string for write_blog prompt
+        claim_registry — ClaimRegistry object for forbidden_pattern_filter and grounding_score
     """
+    # ── Build ClaimRegistry first ─────────────────────────────────────────────
+    registry = ClaimRegistry()
+    registry.build(verified)
+
     lines = [f"RESEARCH DOSSIER — {topic}\n"]
 
     # Confirmed facts
     if verified["confirmed"]:
         lines.append("── CONFIRMED FACTS (verified by 2+ independent sources — safe to state directly) ──")
         for i, c in enumerate(verified["confirmed"], 1):
-            # Include source context explicitly to prevent format/attribution mix-ups
             source_context = f"{c.source_title}" if c.source_title else "unknown source"
             date_context = f" ({c.published_date[:4]})" if c.published_date and len(c.published_date) >= 4 else ""
+            cid = f"CLAIM-{i:03d}"
             lines.append(
-                f"FACT-{i}: {c.claim}\n"
+                f"{cid}: {c.claim}\n"
                 f"  Context: {c.evidence[:300]}\n"
                 f"  Source: {source_context}{date_context}\n"
                 f"  URL: {c.source_url}\n"
@@ -788,17 +941,19 @@ def build_dossier(
             )
         lines.append("")
 
-    # Single-source facts
+    # Single-source facts — offset index by confirmed count
+    confirmed_count = len(verified["confirmed"])
     if verified["single_source"]:
         lines.append(
             '── SINGLE-SOURCE FACTS (from ONE source only — MUST be attributed: '
             '"according to [Source]..." or "reportedly..." — NEVER state as confirmed fact) ──'
         )
-        for i, c in enumerate(verified["single_source"], 1):
+        for i, c in enumerate(verified["single_source"], confirmed_count + 1):
             source_context = f"{c.source_title}" if c.source_title else "unknown source"
             date_context = f" ({c.published_date[:4]})" if c.published_date and len(c.published_date) >= 4 else ""
+            cid = f"CLAIM-{i:03d}"
             lines.append(
-                f"FACT-{i} [SINGLE-SOURCE — attribute to {source_context!r}]: {c.claim}\n"
+                f"{cid} [SINGLE-SOURCE — attribute to {source_context!r}]: {c.claim}\n"
                 f"  Context: {c.evidence[:200]}\n"
                 f"  Source: {source_context}{date_context}\n"
                 f"  URL: {c.source_url}"
@@ -830,14 +985,14 @@ def build_dossier(
         lines.append(competitor_gap)
         lines.append("")
 
-    return "\n".join(lines)
+    return "\n".join(lines), registry
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PUBLIC ENTRY POINT
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def run_research_engine(topic: str, competitor_gap: str, invoke_fn) -> tuple[str, str]:
+def run_research_engine(topic: str, competitor_gap: str, invoke_fn) -> tuple[str, str, "ClaimRegistry"]:
     """
     Run the full 6-phase research engine.
 
@@ -897,8 +1052,8 @@ def run_research_engine(topic: str, competitor_gap: str, invoke_fn) -> tuple[str
     verified = verify_claims(claims, top_chunks)
     logger.info(f"[PHASE6] Done in {time.time()-t6:.2f}s")
 
-    # ── Build Dossier
-    dossier = build_dossier(verified, top_sources, competitor_gap, topic)
+    # ── Build Dossier + ClaimRegistry
+    dossier, registry = build_dossier(verified, top_sources, competitor_gap, topic)
 
     # Build structured facts list for programmatic citations
     # Format: [N] claim | source_title | source_url
@@ -933,6 +1088,7 @@ def run_research_engine(topic: str, competitor_gap: str, invoke_fn) -> tuple[str
             for i, src in enumerate(top_sources, 1)
             if src.get("url")
         )
+        # Registry stays empty — forbidden filter will treat everything as ungrounded
 
     total = time.time() - start
     total_claims = sum(len(v) for v in verified.values())
@@ -941,4 +1097,4 @@ def run_research_engine(topic: str, competitor_gap: str, invoke_fn) -> tuple[str
         f"claims={total_claims} | confirmed={len(verified['confirmed'])}"
     )
 
-    return dossier, raw_facts
+    return dossier, raw_facts, registry

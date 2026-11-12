@@ -740,9 +740,11 @@ REASON: [one sentence on why this one wins for this topic and audience]
 
 
 @traceable(name="ending_generator")
-def generate_ending(blog: str, topic: str, insights: str) -> str:
+def generate_ending(blog: str, topic: str, insights: str, narrative: str = "") -> str:
     """
     Ending Generator — runs after the draft is written, before citations.
+    Upgraded: enforces a NEW insight at the end, not a summary.
+    The ending must land on the one thing the whole blog was building toward.
     Returns ONLY the clean final paragraph text — no labels, no metadata.
     """
     _check_cancelled()
@@ -752,55 +754,74 @@ def generate_ending(blog: str, topic: str, insights: str) -> str:
     blog_tail      = blog[-1_500:]  if blog     else ""
     insights_input = insights[:800] if insights else ""
 
+    # Extract the payoff beat from narrative if available
+    payoff_note = ""
+    if narrative and narrative.strip():
+        import re as _re
+        payoff_match = _re.search(r'(?:payoff|final beat|beat\s*7|last beat)[^\n]*\n([^\n]+)', narrative, _re.IGNORECASE)
+        if payoff_match:
+            payoff_note = f"\nThe blog was building toward this payoff: {payoff_match.group(1).strip()}\nThe ending MUST land on this or something deeper — not a restatement of it.\n"
+
     prompt = f"""
-You are writing the concluding section of a blog about: "{topic}"
+You are writing the final section of a blog about: "{topic}"
 
-CORE INSIGHTS:
+CORE INSIGHTS THE BLOG BUILT TOWARD:
 {insights_input}
+{payoff_note}
 
-CURRENT ENDING (last section of blog):
+CURRENT ENDING (what exists — you are REPLACING this):
 {blog_tail}
 
-Write 3 candidate concluding sections (labeled A, B, C).
+Your job: write an ending that makes the reader feel the whole journey was worth it.
 
-RULES FOR EVERY CANDIDATE:
-- Minimum 3 sentences, ideally 4-5. Never fewer.
-- Must say something NEW — not summarise what was already said
-- No calls to action ("pick a race weekend", "try this today", "share on social")
-- No motivational fluff ("the journey begins", "the future is bright")
-- Must make the reader feel something or think differently
-- The final sentence must be a statement — not a question
+THE ONE RULE THAT MATTERS:
+The ending must say something the reader could NOT have predicted from the opening — 
+but once they read it, it feels completely inevitable.
+Not a summary. Not "in conclusion." Not "this proves that X."
+A NEW thought. The thing the blog was quietly building toward.
 
-A = REFRAME: zoom out and show the topic means something much larger than assumed.
-    End with a single unforgettable line that reframes everything.
+Write 3 candidate endings (A, B, C). Each takes a different approach:
 
-B = HARD TRUTH: name the uncomfortable thing the blog has been building toward.
-    Something true that most people won't say out loud. Land it cleanly.
+A — THE REFRAME
+Zoom out until the topic means something the reader never expected.
+The last sentence should make the reader see the world slightly differently.
+The topic is now a lens for something bigger.
 
-C = CIRCLE BACK: return to the opening image or idea, but with new meaning now that
-    the reader has read the whole blog. Show what has changed.
+B — THE UNCOMFORTABLE TRUTH  
+Name the thing the blog has been circling around but never said directly.
+The thing that's true, slightly uncomfortable, and impossible to unsay once read.
+Land it in one clean, declarative sentence.
 
-After the 3 options write exactly this line: ---CHOSEN---
-Then write ONLY the full text of the best ending. No labels. No "FINAL TEXT:". Just the paragraphs.
+C — THE CIRCLE BACK
+Return to the opening moment or image — but it means something completely different now.
+The reader has changed. Show them how. Don't tell them they've changed — show it
+through the new meaning the opening image carries.
+
+RULES FOR ALL THREE:
+- 3 to 5 sentences. Never fewer than 3.
+- Zero calls to action. Zero motivational fluff.
+- Final sentence must be a statement. Never a question.
+- Natural rhythm — vary sentence length. Short sentences land harder at the end.
+- The ending earns silence. The reader should sit with it for a moment.
+
+After the 3 candidates write exactly: ---CHOSEN---
+Then write ONLY the full text of the best ending. No labels. No commentary.
 """
-    result = _invoke(prompt, temperature=0.6)
+    result = _invoke(prompt, temperature=0.65)
 
-    # Extract everything after ---CHOSEN---
     if "---CHOSEN---" in result:
         final_text = result.split("---CHOSEN---", 1)[1].strip()
     else:
-        # Fallback: take the last clean paragraph that isn't a label
         skip_starts = ("ending a", "ending b", "ending c", "chosen",
-                       "final text", "---", "option", "reframe", "challenge", "hard truth")
+                       "final text", "---", "option", "reframe", "hard truth", "circle")
         paragraphs = [p.strip() for p in result.split("\n\n") if p.strip()]
         clean = [p for p in paragraphs
                  if not any(p.lower().startswith(s) for s in skip_starts)]
         final_text = clean[-1] if clean else ""
 
-    # Strip any remaining label lines that slipped through
     skip_prefixes = ("ending a", "ending b", "ending c", "chosen ending",
                      "final text", "---", "option a", "option b", "option c",
-                     "reframe:", "challenge:", "hard truth:")
+                     "reframe:", "hard truth:", "circle back:")
     clean_lines = [
         line for line in final_text.split("\n")
         if not any(line.strip().lower().startswith(p) for p in skip_prefixes)
@@ -811,8 +832,116 @@ Then write ONLY the full text of the best ending. No labels. No "FINAL TEXT:". J
     return final_text
 
 
+@traceable(name="narrative_architect")
+def narrative_architect(topic: str, audience: str, insights: str, plan: str, length: str = "medium") -> str:
+    """
+    Narrative Architect — the backbone of elite writing.
+
+    Does NOT hardcode shapes (sports→moment-first, etc.).
+    Instead: gives the LLM the topic, audience, insights, and asks it to reason
+    from first principles about the optimal story shape for THIS specific blog.
+
+    Output: a beat-by-beat story outline where every beat has:
+    - A job (what it must make the reader feel or understand)
+    - The narrative technique to use
+    - A transition hook that pulls the reader to the next beat
+
+    The writer follows this outline as a contract, not suggestions.
+    """
+    _check_cancelled()
+    logger.info(f"[ARCHITECT] Building narrative outline | topic='{topic[:60]}'")
+    start = time.time()
+
+    insights_input = insights[:1_500] if insights else ""
+    plan_input     = plan[:1_000]     if plan     else ""
+
+    beat_count = {"short": 4, "medium": 6, "long": 8}.get(length, 6)
+
+    prompt = f"""
+You are a master narrative architect — the person who designs the story before the writer writes it.
+
+Your job is NOT to write the blog. Your job is to design the optimal story shape for this specific blog,
+so the writer knows exactly what each section must DO — not just what it covers.
+
+TOPIC: "{topic}"
+AUDIENCE: {audience}
+LENGTH: {length} ({beat_count} beats)
+
+CORE INSIGHTS FROM RESEARCH:
+{insights_input}
+
+STRATEGY BRIEF:
+{plan_input}
+
+═══════════════════════════════════════
+STEP 1 — READ THE ROOM
+═══════════════════════════════════════
+
+Before designing the structure, answer these 4 questions:
+
+1. What does this reader ALREADY believe about this topic?
+   (Their existing mental model — what they think they know)
+
+2. What is the ONE thing that will genuinely surprise or challenge them?
+   (The insight that makes this blog worth reading)
+
+3. What is the emotional journey?
+   (e.g. curiosity → doubt → revelation → satisfaction)
+   (e.g. nostalgia → discomfort → reframe → pride)
+   (e.g. confidence → confusion → clarity → urgency)
+
+4. What narrative shape serves THIS story best?
+   Do NOT pick from a menu. Reason from the content.
+   Ask: given what I know about the reader and the insight, what shape
+   makes the insight land hardest?
+   Name the shape in one line (e.g. "wound-up clock that springs at beat 4",
+   "detective story where the crime is revealed last", "zoom-in then zoom-out",
+   "subverted expectation followed by earned truth")
+
+═══════════════════════════════════════
+STEP 2 — DESIGN THE BEATS
+═══════════════════════════════════════
+
+Design exactly {beat_count} beats. For each beat:
+
+BEAT [N]: [Name — 3-5 words describing the narrative moment]
+JOB: [What must the reader feel or understand after this beat? One sentence. Specific.]
+TECHNIQUE: [How to execute it — e.g. "open with a specific scene", "introduce the tension",
+            "zoom out to reframe", "deploy the counterintuitive claim", "land the hard truth"]
+CONTENT: [What goes here — specific ideas, questions, or angles to explore]
+TRANSITION HOOK: [The question or tension that pulls the reader into the next beat.
+                  This is what the reader is thinking as they finish this beat.]
+
+BEAT 1 must: grab attention in a way the reader didn't expect
+BEAT {beat_count} must: deliver something the reader couldn't have predicted from Beat 1,
+              but feels completely inevitable once they read it
+
+═══════════════════════════════════════
+STEP 3 — THE SPINE
+═══════════════════════════════════════
+
+After the beats, write:
+
+CORE THESIS: [The single sentence the entire blog is building toward.
+              Every beat serves this. The writer must be able to point at any
+              paragraph and say "this exists to make the thesis land harder."]
+
+TONE CONTRACT: [3 specific tone instructions for the writer.
+                Not "be engaging." Specific:
+                e.g. "Write like someone who finds this topic genuinely unfair"
+                e.g. "Never explain — show. The reader should feel the conclusion before it's stated"
+                e.g. "Shorter sentences as the tension builds. Longest sentence in beat 3."]
+
+Be specific. Generic outlines produce generic blogs.
+The more precisely you define each beat's JOB, the better the writer performs.
+"""
+    result = _invoke(prompt, temperature=0.4)
+    logger.info(f"[ARCHITECT] Done | chars={len(result)} | duration={time.time()-start:.1f}s")
+    return result
+
+
 @traceable(name="unified_writer")
-def write_blog(topic: str, audience: str, plan: str, research_data: str, memory: str, length: str = "medium", gap: str = "", facts: str | None = None, hook: str = "", insights: str = "", registry: "ClaimRegistry | None" = None) -> str:
+def write_blog(topic: str, audience: str, plan: str, research_data: str, memory: str, length: str = "medium", gap: str = "", facts: str | None = None, hook: str = "", insights: str = "", registry: "ClaimRegistry | None" = None, narrative: str = "") -> str:
     """
     Unified Writer — Paul Graham + Tim Urban + George Orwell combined.
     Adaptive by topic type — reading topic type from Strategy Planner output.
@@ -884,7 +1013,7 @@ OPENING HOOK — START WITH THIS EXACT SENTENCE:
 Do not change it. Do not add "Introduction" before it. The blog starts with this sentence.
 """
 
-    # Insights section — the pre-extracted ideas for the writer to build around
+    # Insights section
     insights_section = ""
     if insights and insights.strip():
         insights_section = f"""
@@ -893,6 +1022,24 @@ CORE INSIGHTS TO BUILD THE BLOG AROUND:
 
 One of these should be the spine of the whole blog. Pick the one that fits best and develop it deeply.
 Don't just mention all three and move on — choose one as the central argument and let the others support it.
+"""
+
+    # Narrative Architect outline — the story contract the writer must follow
+    narrative_section = ""
+    if narrative and narrative.strip():
+        narrative_section = f"""
+═══════════════════════════════════════
+NARRATIVE BLUEPRINT — YOUR STORY CONTRACT
+═══════════════════════════════════════
+This is the story architecture designed specifically for this blog.
+Follow the beats IN ORDER. Each beat has a JOB — your writing must complete that job.
+The transition hook at the end of each beat is the question the reader is asking
+as they move to the next section. Answer it in the next beat.
+
+{narrative[:3_000]}
+
+CRITICAL: The blog is not a collection of sections. It is one continuous journey.
+Every beat must PULL the reader into the next one.
 """
 
     # Audience-aware depth instruction — tells the writer what to assume about
@@ -935,6 +1082,7 @@ WRITING STRATEGY:
 {gap_section}
 {hook_section}
 {insights_section}
+{narrative_section}
 
 RESEARCH DOSSIER — FACTS YOU CAN USE:
 {verified_facts_input}
@@ -968,11 +1116,68 @@ Primary: {primary}
 Secondary: {secondary}
 Light use: {light}
 
-PAUL GRAHAM: uncomfortable truth upfront → show the reasoning chain, not just the conclusion → contrarian reframe → "why does this actually work?" answered with real logic
-TIM URBAN: zoom out to show scale → one relatable villain/mechanism → bridge analogy (physical, visual, specific — not "it's like a machine") → curiosity loop at section end → "you" frame
-ORWELL: every sentence earns its place → concrete over abstract → active voice → strong verbs → rhythm (never three same-length sentences in a row) → no banned words
+PAUL GRAHAM MECHANICS (use these concretely):
+- Start with the most uncomfortable true thing about this topic
+- Show WHY the obvious answer is wrong before giving the real answer
+- Find the non-obvious insight — the thing that makes the reader think differently
+- Defend your position. Don't hedge. Say what you actually think.
+- Explain the implication: "which means..." — follow the idea to its conclusion
 
-BANNED WORDS: utilize, leverage, impactful, holistic, synergy, paradigm, "it's important to note", "in today's world", "needless to say", "at the end of the day", "game changer", "deep dive", "journey"
+TIM URBAN MECHANICS (use these concretely):
+- Find the reader's existing mental model — then complicate it
+- Zoom out until the scale becomes surprising. Make the familiar feel strange.
+- One bridge analogy per blog — physical, visual, specific. Not "it's like a machine."
+- End sections with the question the reader is now asking. Let them feel the pull.
+- "You" frame — the reader is in the story, not watching from outside
+
+ORWELL MECHANICS (use these concretely):
+- Every abstract word replaced by a concrete one. No "impactful", "leverage", "synergy".
+- Active voice always. "The ball moved" not "the ball was moved."
+- Strong verbs. Not "he was running" — "he sprinted." Not "she felt nervous" — "her hands stopped."
+- Rhythm: Never three sentences of the same length in a row. Vary deliberately.
+  After a long sentence — a short one. Sometimes one word. Sometimes a fragment.
+- Every sentence earns its place. If it repeats something already said — cut it.
+
+BANNED WORDS: utilize, leverage, impactful, holistic, synergy, paradigm,
+"it's important to note", "in today's world", "needless to say",
+"at the end of the day", "game changer", "deep dive", "journey", "testament"
+
+═══════════════════════════════════════
+NATURAL WRITING — THE 5 RULES
+═══════════════════════════════════════
+
+These are the difference between AI writing and human writing.
+Break any of these and the blog feels robotic.
+
+1. RHYTHM VARIATION
+   Mix sentence lengths deliberately. After every sentence over 20 words,
+   write one under 8 words. Never three sentences of the same length in a row.
+   The last sentence of a section should be short. It lands harder.
+
+2. NO THROAT-CLEARING
+   Never open a sentence with "This", "That", "It is", "There is/are."
+   Never write a sentence that describes what the next sentence will say.
+   Never use transition announcements: "Now let's look at...", "Moving on to...",
+   "As we discussed...", "With that in mind..."
+   Just move. The reader will follow.
+
+3. THE WRITER HAS A STAKE
+   You have a point of view on this topic. You find something about it
+   genuinely interesting, surprising, or slightly unfair.
+   Write from that place. Not "experts believe X" — "X is true, and here's why
+   everyone keeps missing it."
+   One paragraph per section should feel like the writer couldn't NOT write it.
+
+4. SHOW THE REASONING, DON'T ANNOUNCE IT
+   WRONG: "This shows that Rohit's mental approach is crucial."
+   RIGHT: "He had already decided the outcome. The body language said so.
+           The only uncertainty was the margin of victory."
+   The reader should feel the conclusion before you state it.
+
+5. CONNECTIVE TISSUE BETWEEN SECTIONS
+   The last sentence of every section plants a question the next section answers.
+   Not literally — implicitly. The reader should feel pulled forward, not pushed.
+   Each section should make the previous one more meaningful in retrospect.
 
 ═══════════════════════════════════════
 STRUCTURE
@@ -982,13 +1187,10 @@ STRUCTURE
 - Section headings: ### before each heading
 - No bullet points or numbered lists in the main body
 - No emojis, no hashtags
-- Vary what sections DO: some explain, some tell a story, some argue, some zoom out, some zoom in
-- Do NOT repeat the same structural element at the end of every section
 - ANTI-SIGNPOST RULE: Never open a section by announcing what it is about to cover.
   WRONG: "If speed and yorkers are the tools, tactical deployment is the blueprint."
   WRONG: "Now that we understand X, let's look at Y."
-  WRONG: "This section explores the role of..."
-  RIGHT: Start mid-argument. Drop a fact, a scene, a claim, or a contradiction — then build from it.
+  RIGHT: Start mid-argument. Drop a fact, a scene, a claim, or a contradiction.
   The reader should feel the section start, not be told it is starting.
 
 ═══════════════════════════════════════
@@ -1299,57 +1501,95 @@ FIXED: [fixed sentence]
 
 
 @traceable(name="editorial_critic")
-def critique_and_rewrite(blog: str, topic: str, audience: str) -> str:
+def critique_and_rewrite(blog: str, topic: str, audience: str, narrative: str = "") -> str:
     """
-    Human Rubric Critic — evaluates the blog the way a real reader would.
-    Asks the questions that matter: would you share this? does it have an opinion?
-    is there one sentence you'd quote? did the opening earn attention?
+    Story Critic — upgraded from quality checker to narrative diagnostician.
+    Diagnoses story gaps, not just surface quality.
+    Asks where the reader's journey broke down, not just whether the blog is good.
     """
     _check_cancelled()
     logger.info(f"[CRITIC] Starting | topic='{topic[:60]}'")
     start = time.time()
 
+    # Include the narrative blueprint so the critic can check if beats were executed
+    narrative_ref = ""
+    if narrative and narrative.strip():
+        narrative_ref = f"""
+NARRATIVE BLUEPRINT (what the blog was supposed to do):
+{narrative[:1_500]}
+
+Check whether the writer actually executed each beat's JOB.
+"""
+
     prompt = f"""
-You are a sharp, honest editor. You read this blog the way a real person would — not checking boxes, actually reading it.
+You are a story critic — not a proofreader. You diagnose where the reader's journey broke down.
 
 Topic: {topic}
 Audience: {audience}
+{narrative_ref}
 
-Answer these 5 questions about the blog. Be specific and brutally honest.
+Read the blog below and answer these 6 diagnostic questions. Be specific and brutally honest.
 
-QUESTION 1 — WOULD YOU SHARE THIS?
-If a friend who cares about this topic sent you this blog, would you forward it to someone else?
-Answer: YES or NO
-Why: (one specific sentence — what earns it or kills it)
+─────────────────────────────────────────
+Q1 — DID THE OPENING CREATE A CONTRACT?
+─────────────────────────────────────────
+The opening should make a promise — a question, tension, or idea the reader needs resolved.
+Did it? Or did it just introduce the topic?
+Answer: YES / NO
+If NO — what's missing and write a sharper opening (1-2 sentences max):
 
-QUESTION 2 — DOES IT HAVE AN OPINION?
-Does the writer have a clear point of view, or are they just describing things?
-Is there a moment where the writer says something they actually believe, not just reports what others say?
-Answer: YES or NO
-Which line shows it (or is missing): (quote the line or describe what's missing)
+─────────────────────────────────────────
+Q2 — IS THERE A NARRATIVE SPINE?
+─────────────────────────────────────────
+Can you trace one continuous idea or tension from Beat 1 to the final section?
+Or does the blog feel like separate sections stacked on top of each other?
+Answer: SPINE / STACKED
+If STACKED — name the section where the thread breaks and what it should connect to:
 
-QUESTION 3 — ONE QUOTABLE SENTENCE
-Find the single best sentence in the entire blog — the one a reader would screenshot, copy, or remember.
-If none exists, say "NONE FOUND" and name which section most needs one.
-Best sentence: (quote it or "NONE FOUND — fix [section name]")
+─────────────────────────────────────────
+Q3 — WHERE DID THE WRITER PLAY IT SAFE?
+─────────────────────────────────────────
+Find the one section where the writer described instead of argued.
+Where they reported instead of thinking. Where they hedged instead of committing.
+Section name:
+What it says now:
+What it should say (one sharp sentence that takes a real position):
 
-QUESTION 4 — DID THE OPENING EARN ATTENTION?
-Read the first 3 sentences. Would a smart reader who skims headlines stop and keep reading?
-Answer: YES or NO
-Issue: (what specifically is wrong, or "None")
-Fix: (rewrite the opening in 1–2 sharp sentences, or "None needed")
+─────────────────────────────────────────
+Q4 — IS THE WRITING NATURAL OR ROBOTIC?
+─────────────────────────────────────────
+Check for: same sentence length repeated 3+ times in a row, throat-clearing phrases
+("this shows that", "it is important to note", "now let's look at"),
+transitions that announce themselves instead of just moving.
+Answer: NATURAL / ROBOTIC
+If ROBOTIC — quote the worst offending sentence and rewrite it:
 
-QUESTION 5 — DOES THE ENDING LAND?
-Does the last paragraph say something NEW, or does it just repeat what the blog already said?
-Answer: LANDS or RECYCLES
-Issue: (what it says now vs what it should say)
+─────────────────────────────────────────
+Q5 — DOES THE ENDING DELIVER SOMETHING NEW?
+─────────────────────────────────────────
+The ending should say something the reader couldn't have predicted from the opening.
+Not a summary. Not "this proves that X." A new thought.
+Answer: NEW / SUMMARY
+If SUMMARY — what should the ending actually say? (One sentence of direction, not the full ending):
 
+─────────────────────────────────────────
+Q6 — THE ONE THING TEST
+─────────────────────────────────────────
+If the reader remembers ONE thing from this blog tomorrow — what will it be?
+Is that the thing you WANT them to remember?
+What they'll remember:
+Is it the right thing: YES / NO
+If NO — what should they remember instead:
+
+─────────────────────────────────────────
 OVERALL
-Pass: YES or NO (YES only if Q1=YES and at least 3 of Q2-Q5 pass)
-Priority Fix: (the single change that would most improve this blog — be specific)
+─────────────────────────────────────────
+Pass: YES or NO
+(YES only if Q1=YES, Q2=SPINE, Q5=NEW, and at most one failure in Q3/Q4/Q6)
+Priority Fix: (the single change that would most elevate this blog — be specific, one sentence)
 
 Blog:
-{blog[:5_000]}
+{blog[:5_500]}
 """
     result = _invoke(prompt, temperature=0.2)
     logger.info(f"[CRITIC] Done | duration={time.time()-start:.1f}s")
@@ -1359,36 +1599,47 @@ Blog:
 @traceable(name="targeted_revision")
 def targeted_revision(blog: str, critique: str, topic: str, audience: str) -> str:
     """
-    Targeted Revision — fixes ONLY the issues flagged by the Human Rubric Critic.
-    Surgical and fast — does not rewrite the whole blog.
+    Targeted Revision — fixes ONLY the issues flagged by the Story Critic.
+    Surgical. Does not rewrite sections that passed.
     """
     _check_cancelled()
     logger.info(f"[REVISION] Starting targeted revision | topic='{topic[:60]}'")
     start = time.time()
 
     prompt = f"""
-You are a precise editor. Fix only what the critic flagged — nothing else.
+You are a surgical editor. Fix only what the Story Critic flagged — nothing else.
 
 Topic: {topic}
 Audience: {audience}
 
-HUMAN RUBRIC CRITIQUE:
+STORY CRITIC DIAGNOSIS:
 {critique}
 
-WHAT TO FIX:
-- If the opening failed Q4 and a rewrite was given — use it
-- If no quotable sentence exists (Q3 = NONE FOUND) — add one sharp sentence to the section named
-- If the ending recycles (Q5 = RECYCLES) — write a new final paragraph that says something new
-- If the blog has no opinion (Q2 = NO) — add one clear point of view in the section that most needs it
-- Address the Priority Fix if it was not covered above
+WHAT TO FIX (in priority order):
+1. If Q1 failed and a sharper opening was given — replace the opening with it
+2. If Q2 = STACKED — add a connective sentence at the end of the broken section
+   that plants a question the next section answers
+3. If Q3 found a safe section — replace that section's weakest paragraph with
+   the sharp position sentence the critic gave
+4. If Q4 = ROBOTIC — fix the offending sentence using the critic's rewrite
+5. If Q5 = SUMMARY — the ending needs to land on a new thought, not a summary.
+   Write a new final paragraph (3-5 sentences) that delivers something the reader
+   couldn't have predicted but feels inevitable once read
+6. Address the Priority Fix if not covered above
 
-RULES:
+NATURAL WRITING RULES (apply to everything you touch):
+- After fixing, check the rhythm: no three sentences of the same length in a row
+- Remove any throat-clearing: "this shows that", "it is worth noting", "as we can see"
+- Make sure every sentence you write starts with a subject doing something — not "There is" or "It is"
+- Short sentences land harder. The last sentence of any section should be short.
+
+HARD RULES:
 - Touch ONLY what the critique flagged
-- Do NOT rewrite sections that passed
-- Do NOT change facts, numbers or citations
-- Keep the same voice and style
+- Do NOT rewrite sections that passed all checks
+- Do NOT change facts, numbers, or CLAIM-IDs
+- Keep the same voice throughout
 - Section headings stay as ### prefix
-- Return the full revised blog — no commentary
+- Return the FULL revised blog — no commentary, no labels
 
 Original Blog:
 {blog}

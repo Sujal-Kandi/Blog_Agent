@@ -18,6 +18,7 @@ from agent import (
     analyze_competitor_gap,
     extract_facts,
     extract_insights,
+    narrative_architect,
     generate_opening_hook,
     generate_ending,
     write_blog,
@@ -55,6 +56,7 @@ class BlogState(TypedDict):
     # new elite nodes
     insights: str
     hook: str
+    narrative: str      # Narrative Architect beat-by-beat outline
 
     draft: str
     critique: str
@@ -134,6 +136,25 @@ def node_insights(state: BlogState) -> dict:
 
 
 @_guarded
+def node_narrative_architect(state: BlogState) -> dict:
+    """
+    Narrative Architect — designs the story shape before the writer starts.
+    LLM reasons from first principles: what does this reader believe,
+    what will surprise them, what emotional journey serves this topic.
+    Outputs a beat-by-beat outline the writer follows as a contract.
+    Runs after insights+hook, before write.
+    """
+    result = narrative_architect(
+        topic=state["topic"],
+        audience=state["audience"],
+        insights=state.get("insights", ""),
+        plan=state["plan"],
+        length=state["length"],
+    )
+    return {"narrative": result}
+
+
+@_guarded
 def node_hook(state: BlogState) -> dict:
     """
     Opening Hook Generator — produces 5 candidate opening sentences, picks sharpest.
@@ -161,7 +182,7 @@ def node_ending(state: BlogState) -> dict:
     _log = _logging.getLogger("blog_agent")
 
     draft = state["final_blog"]
-    ending = generate_ending(draft, state["topic"], state.get("insights", ""))
+    ending = generate_ending(draft, state["topic"], state.get("insights", ""), state.get("narrative", ""))
 
     if not ending or not ending.strip():
         _log.warning("[ENDING] Empty result — keeping original ending")
@@ -250,6 +271,7 @@ def node_write(state: BlogState) -> BlogState:
             hook=state.get("hook", ""),
             insights=state.get("insights", ""),
             registry=state.get("claim_registry"),
+            narrative=state.get("narrative", ""),
         )
         word_count = len(draft.split())
         if word_count >= threshold:
@@ -414,9 +436,10 @@ def node_grounding_score(state: BlogState) -> dict:
 
 @_guarded
 def node_critique_rewrite(state: BlogState) -> BlogState:
-    """Editorial Critic — produces structured critique, stores in state."""
+    """Story Critic — diagnoses narrative gaps, not just surface quality."""
     critique = critique_and_rewrite(
-        state["final_blog"], state["topic"], state["audience"]
+        state["final_blog"], state["topic"], state["audience"],
+        state.get("narrative", "")
     )
     state["critique"] = critique
     state["iteration"] = state.get("iteration", 0) + 1
@@ -544,34 +567,31 @@ def node_save_memory(state: BlogState) -> BlogState:
 def quality_router(state: BlogState) -> str:
     """
     Quality Router — pure Python, zero LLM call.
-    Reads the Human Rubric Critic output to decide: pass or targeted revision.
+    Reads the Story Critic output to decide: pass or targeted revision.
     Max 1 revision pass to keep latency low.
 
-    New rubric format uses YES/NO answers:
-    - Pass: YES → done
-    - Pass: NO → revise (if iteration budget remains)
+    New story critic format: Pass: YES or NO
+    Old rubric format fallback: scores.
     """
     import re as _re
     critique = state.get("critique", "")
     iteration = state.get("iteration", 0)
     max_iter = state.get("max_iterations", 1)
 
-    # Already at max iterations — move on regardless
     if iteration >= max_iter:
         return "done"
 
-    # Human rubric: "Pass: YES" or "Pass: NO"
+    # Story critic format: "Pass: YES" or "Pass: NO"
     pass_match = _re.search(r'\bpass\s*[:\-]\s*(yes|no)\b', critique, _re.IGNORECASE)
     if pass_match:
         return "done" if pass_match.group(1).lower() == "yes" else "revise"
 
-    # Fallback: old score format (Score: X/10) — keep backward compat
+    # Fallback: old score format
     scores = _re.findall(r'score:\s*(\d+)/10', critique, _re.IGNORECASE)
     if scores:
         low_scores = [int(s) for s in scores if int(s) < 7]
         return "revise" if low_scores else "done"
 
-    # Critic returned nothing parseable — skip revision
     return "done"
 
 
@@ -587,6 +607,7 @@ def build_graph():
     g.add_node("retrieve_memory",        node_retrieve_memory)
     g.add_node("insights",               node_insights)
     g.add_node("hook",                   node_hook)
+    g.add_node("narrative_architect",    node_narrative_architect)   # Elite — story shape
     g.add_node("write",                  node_write)
     g.add_node("audit_facts",            node_audit_facts)
     g.add_node("forbidden_filter",       node_forbidden_filter)   # Phase 2 — NEW
@@ -609,12 +630,15 @@ def build_graph():
     g.add_edge("research",         "extract_facts")
     g.add_edge("extract_facts",    "retrieve_memory")
 
-    # After memory: insights + hook run IN PARALLEL (both need research + plan)
+    # After memory: insights + hook run IN PARALLEL
     g.add_edge("retrieve_memory",  "insights")
     g.add_edge("retrieve_memory",  "hook")
 
-    # Both must complete before writing starts
-    g.add_edge(["insights", "hook"], "write")
+    # Both complete → Narrative Architect designs the story shape
+    g.add_edge(["insights", "hook"], "narrative_architect")
+
+    # Narrative Architect → Write (writer follows the beat outline)
+    g.add_edge("narrative_architect", "write")
 
     g.add_edge("write",            "audit_facts")
     # After audit: forbidden filter blocks ungrounded specific claims (Phase 2)
@@ -668,6 +692,7 @@ def run_blog_pipeline(topic: str, audience: str, length: str = "medium") -> dict
         "claim_registry":   None,
         "insights":         "",
         "hook":             "",
+        "narrative":        "",
         "draft":            "",
         "critique":         "",
         "final_blog":       "",

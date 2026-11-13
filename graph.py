@@ -525,19 +525,33 @@ def node_post_revision_check(state: BlogState) -> BlogState:
             break
 
     # ── Strip CLAIM-XXX citation labels from reader-facing blog ───────────────
-    # These are internal research traceability markers — they must NEVER appear
-    # in the published output. Strip all variants:
-    #   (CLAIM-001)   [CLAIM-001]   CLAIM-001   (CLAIM-001; CLAIM-002)
+    # Strategy: two-pass approach.
+    # Pass 1 — strip entire bracketed groups that contain only CLAIM-IDs:
+    #   (CLAIM-001)  (CLAIM-001; CLAIM-002)  (CLAIM-001, CLAIM-002; CLAIM-003)
+    #   [CLAIM-001]  [CLAIM-001; CLAIM-002]
     state["final_blog"] = _re.sub(
-        r'[\(\[]?CLAIM-\d{3}(?:[;,]\s*CLAIM-\d{3})*[\)\]]?',
+        r'[\(\[]\s*CLAIM-\d{3}(?:\s*[;,]\s*CLAIM-\d{3})*\s*[\)\]]',
         '',
         state["final_blog"],
         flags=_re.IGNORECASE
     )
-    # Clean up any double spaces left by the removal
+    # Pass 2 — strip any bare CLAIM-XXX tokens that weren't inside brackets
+    #   CLAIM-001  or  CLAIM-001; CLAIM-002  without surrounding brackets
+    state["final_blog"] = _re.sub(
+        r'\bCLAIM-\d{3}\b',
+        '',
+        state["final_blog"],
+        flags=_re.IGNORECASE
+    )
+    # Clean up orphaned punctuation left by removal: "; ;" "( )" ", ,"
+    state["final_blog"] = _re.sub(r'\(\s*\)', '', state["final_blog"])
+    state["final_blog"] = _re.sub(r'\[\s*\]', '', state["final_blog"])
+    # Clean up double spaces and space-before-punctuation artifacts
     state["final_blog"] = _re.sub(r'  +', ' ', state["final_blog"])
-    # Clean up space before punctuation: " ." " ," " )" left after stripping
     state["final_blog"] = _re.sub(r' +([.,;:!?)])', r'\1', state["final_blog"])
+    # Clean up orphaned semicolons/commas left mid-sentence: "text ; more" → "text more"
+    state["final_blog"] = _re.sub(r'\s*[;,]\s*([;,])', r'\1', state["final_blog"])
+    state["final_blog"] = _re.sub(r'\(\s*[;,]\s*\)', '', state["final_blog"])
 
     # ── Strip any REASON: / **REASON:** labels that survived to final_blog ────
     # These leak from the hook generator when it includes its selection rationale

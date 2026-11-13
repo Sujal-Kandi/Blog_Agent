@@ -501,7 +501,18 @@ Core Question: The single most important question this blog must answer.
 Reader Pain Point: What does the reader actually want to understand or solve?
 Unique Angle: What do most articles on this topic miss? What makes this one different?
 
-STEP 2 — WRITING APPROACH
+STEP 2 — THE TENSION (this is the most important step)
+Answer these two questions with brutal specificity:
+
+Reader's Current Belief: What does this reader already believe or assume about this topic?
+(Not what they don't know — what they think they know. The mental model they're walking in with.)
+
+The Challenge: What does this blog need to complicate, correct, or deepen in that belief?
+(Not just "add information" — what specifically will make them think differently?)
+
+This tension is the engine of the whole blog. If the blog doesn't create this shift, it's just content.
+
+STEP 3 — WRITING APPROACH
 Based on topic type choose the right style:
 - Technical: concrete problem first, precise examples, build step by step
 - Sports: specific moment first, data supports story, vivid and grounded
@@ -516,13 +527,13 @@ Based on topic type choose the right style:
 Writing Style: (name the style)
 Why this fits: (one sentence)
 
-STEP 3 — STRUCTURE
+STEP 4 — STRUCTURE
 Opening Hook: (specific — a scene, stat, contradiction or uncomfortable truth for THIS topic)
-Sections: (5-7 headings, each with one line on what it must prove)
-Core Argument: (the single insight the reader leaves with)
+Sections: (5-7 headings, each with one line on what it must prove — and how it moves the tension forward)
+Core Argument: (the single insight the reader leaves with — must resolve the tension from Step 2)
 Conclusion: (how to land it — challenge, reframe, hard truth or memorable final thought)
 
-STEP 4 — TONE AND VOICE
+STEP 5 — TONE AND VOICE
 Tone: (e.g. analytical-urgent / warm-curious / direct-challenging)
 Voice: (e.g. expert coach / investigative journalist / thoughtful teacher)
 Avoid: (topic-specific clichés and shallow takes to avoid)
@@ -858,82 +869,84 @@ def narrative_architect(topic: str, audience: str, insights: str, plan: str, len
     beat_count = {"short": 4, "medium": 6, "long": 8}.get(length, 6)
 
     prompt = f"""
-You are a master narrative architect — the person who designs the story before the writer writes it.
-
-Your job is NOT to write the blog. Your job is to design the optimal story shape for this specific blog,
-so the writer knows exactly what each section must DO — not just what it covers.
+You are a narrative architect. Your job is to feel the story before the writer writes it.
 
 TOPIC: "{topic}"
 AUDIENCE: {audience}
 LENGTH: {length} ({beat_count} beats)
 
-CORE INSIGHTS FROM RESEARCH:
+CORE INSIGHTS:
 {insights_input}
 
 STRATEGY BRIEF:
 {plan_input}
 
 ═══════════════════════════════════════
-STEP 1 — READ THE ROOM
+PART 1 — FEEL THE STORY FIRST
 ═══════════════════════════════════════
 
-Before designing the structure, answer these 4 questions:
+Before anything structural, answer these three questions in plain sentences.
+Not bullet points. Not labels. Write like a person thinking.
 
-1. What does this reader ALREADY believe about this topic?
-   (Their existing mental model — what they think they know)
+WHAT THE READER WALKS IN BELIEVING:
+Write one paragraph. What does this reader already think about this topic?
+Not what they don't know — what they think they know. Their existing mental model.
+Be specific to this exact reader and this exact topic.
 
-2. What is the ONE thing that will genuinely surprise or challenge them?
-   (The insight that makes this blog worth reading)
+WHAT THIS BLOG DOES TO THAT BELIEF:
+Write one paragraph. This blog doesn't just add information to their existing belief —
+it complicates it, challenges it, or deepens it in a way they didn't expect.
+Name the specific shift. Not "they'll learn more." What will they think differently?
 
-3. What is the emotional journey?
-   (e.g. curiosity → doubt → revelation → satisfaction)
-   (e.g. nostalgia → discomfort → reframe → pride)
-   (e.g. confidence → confusion → clarity → urgency)
-
-4. What narrative shape serves THIS story best?
-   Do NOT pick from a menu. Reason from the content.
-   Ask: given what I know about the reader and the insight, what shape
-   makes the insight land hardest?
-   Name the shape in one line (e.g. "wound-up clock that springs at beat 4",
-   "detective story where the crime is revealed last", "zoom-in then zoom-out",
-   "subverted expectation followed by earned truth")
-
-═══════════════════════════════════════
-STEP 2 — DESIGN THE BEATS
-═══════════════════════════════════════
-
-Design exactly {beat_count} beats. For each beat:
-
-BEAT [N]: [Name — 3-5 words describing the narrative moment]
-JOB: [What must the reader feel or understand after this beat? One sentence. Specific.]
-TECHNIQUE: [How to execute it — e.g. "open with a specific scene", "introduce the tension",
-            "zoom out to reframe", "deploy the counterintuitive claim", "land the hard truth"]
-CONTENT: [What goes here — specific ideas, questions, or angles to explore]
-TRANSITION HOOK: [The question or tension that pulls the reader into the next beat.
-                  This is what the reader is thinking as they finish this beat.]
-
-BEAT 1 must: grab attention in a way the reader didn't expect
-BEAT {beat_count} must: deliver something the reader couldn't have predicted from Beat 1,
-              but feels completely inevitable once they read it
+THE EMOTIONAL ARC IN ONE SENTENCE:
+How does the reader feel at the START vs the END?
+Not what they know — what they feel.
+Example: "They arrive skeptical and leave with a quiet respect they can't entirely explain."
+Example: "They arrive certain and leave with a productive doubt."
+Write yours in one sentence.
 
 ═══════════════════════════════════════
-STEP 3 — THE SPINE
+PART 2 — THE STORY SPINE
 ═══════════════════════════════════════
 
-After the beats, write:
+Now write the story as a single continuous paragraph — {beat_count} sentences,
+one sentence per beat. This is the story told in compressed form.
 
-CORE THESIS: [The single sentence the entire blog is building toward.
-              Every beat serves this. The writer must be able to point at any
-              paragraph and say "this exists to make the thesis land harder."]
+Do NOT use labels like "Beat 1" or "Section 2".
+Do NOT use bullet points or structure.
+Write it the way you'd tell a friend what this blog is about — as a flowing narrative.
 
-TONE CONTRACT: [3 specific tone instructions for the writer.
-                Not "be engaging." Specific:
-                e.g. "Write like someone who finds this topic genuinely unfair"
-                e.g. "Never explain — show. The reader should feel the conclusion before it's stated"
-                e.g. "Shorter sentences as the tension builds. Longest sentence in beat 3."]
+Each sentence should:
+- Do something specific to the reader (create tension, deliver a surprise, reframe what came before)
+- Pull naturally into the next sentence
+- Build toward the final sentence, which lands the whole thing
 
-Be specific. Generic outlines produce generic blogs.
-The more precisely you define each beat's JOB, the better the writer performs.
+The first sentence must grab. The last sentence must land.
+Everything in between must pull.
+
+═══════════════════════════════════════
+PART 3 — THE CONTRACT
+═══════════════════════════════════════
+
+After the story spine, write three things:
+
+CORE THESIS (one sentence):
+The single idea the entire blog is building toward. Not a topic description.
+The specific thought the reader should be thinking as they close the tab.
+
+WHAT MUST NOT HAPPEN:
+Name the one failure mode that would kill this blog.
+e.g. "The writer explains instead of shows and the reader feels lectured."
+e.g. "The sections feel like separate arguments instead of one accumulating proof."
+e.g. "The ending summarises instead of landing something new."
+One sentence. The writer should read this and feel the pressure of it.
+
+TONE IN ONE LINE:
+Not a list of adjectives. One sentence that captures exactly how this should sound.
+e.g. "Write like someone who has watched every game and is finally allowed to say what they actually think."
+e.g. "Write like a detective who already knows the answer but is walking the reader through the evidence."
+
+Be specific. This spine is what the writer feels while writing — not a checklist to execute.
 """
     result = _invoke(prompt, temperature=0.4)
     logger.info(f"[ARCHITECT] Done | chars={len(result)} | duration={time.time()-start:.1f}s")
@@ -984,24 +997,118 @@ def write_blog(topic: str, audience: str, plan: str, research_data: str, memory:
     ))
     primary, secondary, light = weights
 
-    # Voice profile per topic type — makes every blog feel natural to its subject
+    # Voice profile per topic type.
+    # These are not job descriptions — they are writing postures.
+    # Each one tells the LLM HOW to hold the topic, not WHO to pretend to be.
+    # The difference: "you are a fan" produces performed enthusiasm.
+    # "You find one thing about this genuinely unfair" produces real voice.
     VOICE_PROFILES = {
-        "sports":      "You are a passionate, knowledgeable cricket/sports fan who has watched thousands of hours of this sport. You talk like someone who actually loves the game — not a journalist filing a report, not a coach writing a manual. You have opinions. You get excited. You make comparisons a true fan would make.",
-        "technical":   "You are a sharp engineer or practitioner who has worked in this field. You explain things the way a great mentor does — not dumbing it down, not showing off. You know which details actually matter and which ones are noise.",
-        "educational": "You are a naturally curious person who just went deep on this topic and can't stop thinking about it. You explain it like you're telling a smart friend what you learned — genuinely excited, not performing excitement.",
-        "historical":  "You are a historian who makes the past feel alive and relevant. You connect what happened then to what it means now. You have a point of view — history isn't just dates and names to you.",
-        "analytical":  "You are a sharp thinker who has thought about this more carefully than most people. You're willing to say something uncomfortable if the evidence supports it. You show your reasoning, not just your conclusions.",
-        "opinion":     "You are someone with a clear, well-reasoned position on this topic. You acknowledge the other side honestly before dismantling it. You don't hedge. You say what you actually think.",
-        "science":     "You are a science journalist who bridges the gap between research papers and real people. You make complex things concrete. You care about accuracy but hate jargon. You find the human story inside the data.",
-        "health":      "You are a health writer who respects both the science and the reader's intelligence. No fear-mongering, no oversimplification. You tell people what the evidence actually says and what it means for their life.",
-        "business":    "You are a sharp business thinker with real experience. You cut through the management-speak. You talk about money, incentives, and decisions honestly — the way good operators do in private.",
-        "review":      "You are a trusted critic who has actually used/seen/experienced what you're reviewing. You have a clear verdict and you defend it with specific evidence. You are honest even when it's uncomfortable.",
-        "concept_explainer": "You are a thoughtful person who finds this idea genuinely fascinating and wants to share that fascination. You don't lecture. You explore. You let the reader discover alongside you.",
-        "person_biography":  "You are writing about someone you genuinely find interesting. You have a perspective on what makes them remarkable — not just their achievements, but the specific thing about how they think or operate that most people miss.",
-        "historical_event":  "You bring history alive by putting the reader in the room. You care about why things happened, not just what happened. You connect the past to something the reader can feel today.",
+        "sports": (
+            "You find something about this topic genuinely unfair or underappreciated — "
+            "and you've been wanting to say it. You don't describe what happened. "
+            "You argue about what it means. You write like someone who has watched "
+            "every game, read every stat, and is finally allowed to say what they actually think. "
+            "Short sentences when making a point. Longer ones when building the case. "
+            "Never neutral. Always specific."
+        ),
+        "technical": (
+            "You write like a practitioner who has hit this problem in production, "
+            "not a textbook author explaining theory. You skip what's obvious to anyone "
+            "who has been in the field. You go straight to the thing most tutorials miss. "
+            "Concrete over abstract, always. The moment you catch yourself using a vague word, "
+            "you replace it with the specific thing you actually mean."
+        ),
+        "educational": (
+            "You write like someone who just had a genuine insight about this topic "
+            "and can't stop thinking about it. Not excitement — curiosity. "
+            "You let the reader discover things slightly before you name them. "
+            "You ask the question the reader is already forming, then answer it better than they expected. "
+            "You never explain what someone already knows. You only explain the gap."
+        ),
+        "historical": (
+            "You write like someone who finds the past genuinely strange — "
+            "and can't understand why everyone treats it as settled. "
+            "You put the reader in the room. You care about why things happened, "
+            "not just what happened. Every historical fact connects to something "
+            "the reader can feel today, or it doesn't belong in the blog."
+        ),
+        "analytical": (
+            "You write like a detective who already knows the answer "
+            "and is walking the reader through the evidence. "
+            "You say the uncomfortable thing plainly. You show your reasoning — "
+            "not just your conclusions. When you make a claim, you immediately "
+            "ask yourself 'what would someone say to push back on this?' "
+            "and you answer it before they can."
+        ),
+        "opinion": (
+            "You have a position and you hold it. You don't hedge. "
+            "You name the opposing view clearly — then you dismantle it with evidence, "
+            "not dismissal. You write like someone who has thought about this longer "
+            "than everyone else in the room and is tired of the shallow takes. "
+            "Direct. Specific. Never mean, but never soft either."
+        ),
+        "science": (
+            "You write like a translator — from research language to human language. "
+            "You find the moment where the science becomes surprising, "
+            "then you start there. You never use jargon without immediately showing "
+            "what it looks like in real life. You are precise because precision is "
+            "interesting, not because it sounds authoritative."
+        ),
+        "health": (
+            "You write like someone who has read the studies and is telling a friend "
+            "what they actually say — not what the headlines say. "
+            "You respect the reader's intelligence. You say 'we don't know yet' "
+            "when that's true. You say 'this is well-established' when that's true. "
+            "No fear. No hype. Just what the evidence actually means for someone's life."
+        ),
+        "business": (
+            "You write like someone who has sat in the room where the decision was made. "
+            "You cut through the framework language. You talk about money, "
+            "incentives, and tradeoffs the way operators talk in private — "
+            "not the way consultants talk on stage. "
+            "Every abstract claim gets a concrete number or a named example, or it gets cut."
+        ),
+        "review": (
+            "You have a verdict and you give it in the first paragraph. "
+            "Everything after is evidence. You write like a trusted friend "
+            "who has actually used this thing — not a press release, "
+            "not a hedge. You name what's good specifically. "
+            "You name what's bad specifically. You tell the reader "
+            "exactly who this is for and who should walk away."
+        ),
+        "concept_explainer": (
+            "You find this idea genuinely fascinating — not because it's impressive, "
+            "but because it changes how you see something you thought you understood. "
+            "You don't lecture. You show the reader something, then stand back "
+            "and let them feel the strangeness of it. "
+            "You let the idea do the work. You just clear the path."
+        ),
+        "person_biography": (
+            "You write like someone who has figured out the one thing "
+            "about this person that everyone else keeps missing. "
+            "Not their achievements — the specific way they think, "
+            "or decide, or fail, or recover. That's the story. "
+            "Everything else is context for it."
+        ),
+        "historical_event": (
+            "You put the reader in the room. Not the textbook summary — "
+            "the actual moment, with the actual stakes. "
+            "You make the reader feel what it meant to be there, "
+            "not just what happened next. And then you connect it "
+            "to something they can feel today — or the history is just trivia."
+        ),
     }
 
-    voice = VOICE_PROFILES.get(topic_type, "You are a smart, curious writer who has thought deeply about this topic. You write with a clear point of view — not neutral, not academic. Human.")
+    voice = VOICE_PROFILES.get(
+        topic_type,
+        (
+            "You have thought about this topic more carefully than most people, "
+            "and you have something specific to say about it. "
+            "Not a summary. Not a survey. One clear point of view, "
+            "built carefully, sentence by sentence. "
+            "You write like a person — not a content generator."
+        )
+    )
 
     # Opening hook section — if a pre-generated hook exists, the writer leads with it
     hook_section = ""
@@ -1024,22 +1131,24 @@ One of these should be the spine of the whole blog. Pick the one that fits best 
 Don't just mention all three and move on — choose one as the central argument and let the others support it.
 """
 
-    # Narrative Architect outline — the story contract the writer must follow
+    # Narrative Architect spine — the felt story the writer carries while writing
     narrative_section = ""
     if narrative and narrative.strip():
         narrative_section = f"""
 ═══════════════════════════════════════
-NARRATIVE BLUEPRINT — YOUR STORY CONTRACT
+THE STORY YOU ARE TELLING
 ═══════════════════════════════════════
-This is the story architecture designed specifically for this blog.
-Follow the beats IN ORDER. Each beat has a JOB — your writing must complete that job.
-The transition hook at the end of each beat is the question the reader is asking
-as they move to the next section. Answer it in the next beat.
+Before you write a single word, read this. This is the story.
+Not a structure to follow. Not beats to check off.
+The arc, the shift, the thing the reader should feel by the end.
 
 {narrative[:3_000]}
 
-CRITICAL: The blog is not a collection of sections. It is one continuous journey.
-Every beat must PULL the reader into the next one.
+Keep this in mind the entire time you write.
+Every paragraph either moves this story forward or it doesn't belong.
+The sections are not containers for information.
+They are moments in a continuous journey.
+If the reader could skip a section and not feel the loss — rewrite it.
 """
 
     # Audience-aware depth instruction — tells the writer what to assume about
@@ -1143,41 +1252,39 @@ BANNED WORDS: utilize, leverage, impactful, holistic, synergy, paradigm,
 "at the end of the day", "game changer", "deep dive", "journey", "testament"
 
 ═══════════════════════════════════════
-NATURAL WRITING — THE 5 RULES
+NATURAL WRITING — THE REAL RULES
 ═══════════════════════════════════════
 
-These are the difference between AI writing and human writing.
-Break any of these and the blog feels robotic.
+These are not guidelines. They are diagnostics.
+After writing each paragraph, run it against these four checks.
+If it fails any one of them, rewrite the paragraph before moving on.
 
-1. RHYTHM VARIATION
-   Mix sentence lengths deliberately. After every sentence over 20 words,
-   write one under 8 words. Never three sentences of the same length in a row.
-   The last sentence of a section should be short. It lands harder.
+CHECK 1 — THE RHYTHM CHECK
+Read the last 3 sentences aloud. Do they all end at roughly the same length?
+If yes — that's robotic. Break the pattern.
+Long sentence. Then short. Sometimes one word. Sometimes a fragment. Then long again.
+The last sentence of every section should be the shortest. It lands harder that way.
 
-2. NO THROAT-CLEARING
-   Never open a sentence with "This", "That", "It is", "There is/are."
-   Never write a sentence that describes what the next sentence will say.
-   Never use transition announcements: "Now let's look at...", "Moving on to...",
-   "As we discussed...", "With that in mind..."
-   Just move. The reader will follow.
+CHECK 2 — THE THROAT-CLEARING CHECK
+Does the paragraph start with any of these?
+"This shows...", "It is important to note...", "In this section...",
+"Now let's look at...", "As we can see...", "With that in mind...",
+"There is/are...", "It is worth noting..."
+If yes — delete the opening sentence entirely. Start with the second sentence.
+The blog will be better. Every time.
 
-3. THE WRITER HAS A STAKE
-   You have a point of view on this topic. You find something about it
-   genuinely interesting, surprising, or slightly unfair.
-   Write from that place. Not "experts believe X" — "X is true, and here's why
-   everyone keeps missing it."
-   One paragraph per section should feel like the writer couldn't NOT write it.
+CHECK 3 — THE STAKE CHECK
+Could this paragraph have been written by someone who finds this topic mildly interesting?
+If yes — it's not good enough. Find the thing about this specific point that is
+surprising, slightly unfair, or genuinely counterintuitive. Write from that place.
+One paragraph per section must feel like the writer couldn't NOT write it.
 
-4. SHOW THE REASONING, DON'T ANNOUNCE IT
-   WRONG: "This shows that Rohit's mental approach is crucial."
-   RIGHT: "He had already decided the outcome. The body language said so.
-           The only uncertainty was the margin of victory."
-   The reader should feel the conclusion before you state it.
-
-5. CONNECTIVE TISSUE BETWEEN SECTIONS
-   The last sentence of every section plants a question the next section answers.
-   Not literally — implicitly. The reader should feel pulled forward, not pushed.
-   Each section should make the previous one more meaningful in retrospect.
+CHECK 4 — THE SHOW/TELL CHECK
+Find the last sentence that makes a claim about significance.
+("This is crucial", "This reveals", "This demonstrates", "This is key")
+Delete it. The sentence before it should already make the reader feel the significance.
+If deleting the claim sentence makes the paragraph weaker — rewrite the paragraph before it
+so the significance is felt, not announced.
 
 ═══════════════════════════════════════
 STRUCTURE
@@ -1556,13 +1663,40 @@ What it says now:
 What it should say (one sharp sentence that takes a real position):
 
 ─────────────────────────────────────────
-Q4 — IS THE WRITING NATURAL OR ROBOTIC?
+Q4 — RHYTHM AND NATURALNESS AUDIT
 ─────────────────────────────────────────
-Check for: same sentence length repeated 3+ times in a row, throat-clearing phrases
-("this shows that", "it is important to note", "now let's look at"),
-transitions that announce themselves instead of just moving.
-Answer: NATURAL / ROBOTIC
-If ROBOTIC — quote the worst offending sentence and rewrite it:
+This is a pattern audit — not a single sentence fix. Read the whole blog for these four patterns.
+
+PATTERN A — SAME-LENGTH SENTENCES:
+Find any sequence of 3+ consecutive sentences at roughly the same length.
+Quote the sequence. This is the most common sign of robotic writing.
+
+PATTERN B — THROAT-CLEARING OPENERS:
+Scan every paragraph opening. List every one that starts with:
+"This shows...", "It is important...", "In this section...", "Now let's look at...",
+"As we can see...", "With that in mind...", "There is/are...", "It is worth noting...",
+"This means that...", "What this tells us...", "This demonstrates..."
+Quote each one you find.
+
+PATTERN C — SIGNIFICANCE ANNOUNCEMENTS:
+Find sentences that announce their own importance instead of earning it.
+Examples: "This is a crucial point.", "This reveals something significant.",
+"This is key to understanding X.", "What makes this remarkable is..."
+These sentences exist because the paragraph before them didn't do its job.
+Quote each one.
+
+PATTERN D — SECTION OPENINGS THAT ANNOUNCE INSTEAD OF START:
+Find any section that opens by telling the reader what it's about to cover.
+Examples: "In this section, we'll explore...", "To understand X, we need to first look at Y.",
+"Now that we've covered X, let's turn to Y."
+Quote each offending opening.
+
+For each pattern found:
+- Quote the offending text
+- Write ONE rewritten version that fixes it
+
+Overall answer: NATURAL / ROBOTIC
+(ROBOTIC if any pattern found in 2+ sections. NATURAL only if the blog is clean across all four.)
 
 ─────────────────────────────────────────
 Q5 — DOES THE ENDING DELIVER SOMETHING NEW?
@@ -1615,31 +1749,119 @@ Audience: {audience}
 STORY CRITIC DIAGNOSIS:
 {critique}
 
-WHAT TO FIX (in priority order):
-1. If Q1 failed and a sharper opening was given — replace the opening with it
-2. If Q2 = STACKED — add a connective sentence at the end of the broken section
-   that plants a question the next section answers
-3. If Q3 found a safe section — replace that section's weakest paragraph with
-   the sharp position sentence the critic gave
-4. If Q4 = ROBOTIC — fix the offending sentence using the critic's rewrite
-5. If Q5 = SUMMARY — the ending needs to land on a new thought, not a summary.
-   Write a new final paragraph (3-5 sentences) that delivers something the reader
-   couldn't have predicted but feels inevitable once read
-6. Address the Priority Fix if not covered above
+═══════════════════════════════════════
+WHAT TO FIX
+═══════════════════════════════════════
 
-NATURAL WRITING RULES (apply to everything you touch):
-- After fixing, check the rhythm: no three sentences of the same length in a row
-- Remove any throat-clearing: "this shows that", "it is worth noting", "as we can see"
-- Make sure every sentence you write starts with a subject doing something — not "There is" or "It is"
-- Short sentences land harder. The last sentence of any section should be short.
+Work through the critique in this order. For each issue flagged, apply the fix below.
+Skip any item the critic marked as passing.
 
-HARD RULES:
-- Touch ONLY what the critique flagged
-- Do NOT rewrite sections that passed all checks
-- Do NOT change facts, numbers, or CLAIM-IDs
-- Keep the same voice throughout
-- Section headings stay as ### prefix
-- Return the FULL revised blog — no commentary, no labels
+─────────────────────────────────────────
+FIX 1 — OPENING (if Q1 failed)
+─────────────────────────────────────────
+If the critic gave a sharper opening — use it exactly.
+If not, replace the current opening using this principle:
+
+WRONG (announces the topic):
+"MS Dhoni is widely regarded as one of cricket's greatest finishers."
+
+RIGHT (drops the reader into tension):
+"Everyone remembers the six. Nobody talks about the ten chases before it."
+
+The opening must create a gap the reader needs filled. Not introduce a subject.
+
+─────────────────────────────────────────
+FIX 2 — NARRATIVE SPINE (if Q2 = STACKED)
+─────────────────────────────────────────
+The critic named the section where the thread breaks.
+At the END of that section, add one sentence that plants a question
+the NEXT section answers. The reader should feel pulled, not pushed.
+
+WRONG transition (announces next section):
+"Now that we understand his technique, let's look at his mental approach."
+
+RIGHT transition (creates pull):
+"The technique explains how. It doesn't explain why he gets better when the pressure gets worse."
+
+One sentence. At the end of the broken section. That's all.
+
+─────────────────────────────────────────
+FIX 3 — SAFE SECTION (if Q3 found one)
+─────────────────────────────────────────
+The critic named the section and the paragraph that plays it safe.
+Replace the weakest paragraph with something that takes a real position.
+
+WRONG (describes without arguing):
+"Dhoni's captaincy had a significant influence on his batting approach.
+His leadership experience gave him a broader perspective on the game."
+
+RIGHT (argues, shows reasoning):
+"He was the only batsman on the field who also knew where every fielder was going to be
+in the next two overs. That's not confidence. That's a different kind of information."
+
+The replacement paragraph must say something the reader wasn't expecting.
+Not more information — a sharper claim.
+
+─────────────────────────────────────────
+FIX 4 — ROBOTIC PATTERNS (if Q4 = ROBOTIC)
+─────────────────────────────────────────
+The critic listed specific patterns found. Fix each one.
+
+FOR SAME-LENGTH SENTENCE SEQUENCES:
+Take the quoted sequence and break the rhythm.
+One sentence gets cut in half. One gets extended. One becomes a fragment.
+
+WRONG (all medium length, all same rhythm):
+"He adjusted his back-lift over time. The change improved his control significantly.
+His strike-rate in death overs increased as a result."
+
+RIGHT (broken rhythm, varied length):
+"He shortened his back-lift. That one adjustment — compact, almost invisible — changed
+everything about how he played the death overs. His strike-rate proved it."
+
+FOR THROAT-CLEARING OPENERS:
+Delete the entire opening sentence of the offending paragraph. Start with what was sentence two.
+Test: does the paragraph still make sense? It will. It will also be better.
+
+WRONG: "This shows that the back-lift adjustment was crucial to his evolution as a finisher."
+RIGHT: (delete it — the paragraph before already showed it)
+
+FOR SIGNIFICANCE ANNOUNCEMENTS:
+Delete the sentence entirely. The paragraph before it should already make the reader feel it.
+If the paragraph before it doesn't — rewrite the paragraph before it, not the announcement.
+
+FOR SECTION OPENINGS THAT ANNOUNCE:
+WRONG: "To understand what made him different, we need to look at his technical evolution."
+RIGHT: "His back-lift was always too high. Everyone could see it. Almost no one saw what he did about it."
+
+─────────────────────────────────────────
+FIX 5 — ENDING (if Q5 = SUMMARY)
+─────────────────────────────────────────
+Delete the current ending entirely. Write a new final section: 3-5 sentences.
+
+The ending must deliver something the reader could NOT have predicted from the opening —
+but once they read it, it feels completely inevitable.
+
+WRONG (summary ending):
+"Dhoni's greatness as a finisher comes from his technique, his mental strength, and his experience.
+These qualities combined to make him the best in the business."
+
+RIGHT (landing something new):
+"The six everyone remembers took two seconds. What it took to be trusted with that moment
+took fifteen years. Most people got the highlight. They missed the work that made it possible."
+
+3-5 sentences. No calls to action. No motivational wrap-up.
+Final sentence is a statement. Short. It lands in silence.
+
+═══════════════════════════════════════
+HARD RULES
+═══════════════════════════════════════
+- Touch ONLY what the critique flagged. Leave everything else exactly as it is.
+- Do NOT rewrite sections that passed.
+- Do NOT change any facts, numbers, or CLAIM-IDs.
+- Match the voice of the surrounding text in every fix.
+- Section headings stay as ### prefix.
+- Return the FULL revised blog — no commentary, no labels, no explanation.
 
 Original Blog:
 {blog}

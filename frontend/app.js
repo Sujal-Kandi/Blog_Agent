@@ -127,7 +127,8 @@ async function generateBlog() {
   show('progressSection');
 
   clearProgressTimers();
-  const stepTimings = [0, 3000, 6000, 12000, 15000, 30000, 50000, 60000, 65000];
+  // Step timings spread across ~420s (7 min) to match actual pipeline duration
+  const stepTimings = [0, 8000, 20000, 45000, 70000, 120000, 200000, 300000, 370000];
   stepTimings.forEach((delay, i) => {
     progressTimers.push(setTimeout(() => {
       if (i > 0) setStep(i, 'done');
@@ -135,10 +136,24 @@ async function generateBlog() {
     }, delay));
   });
 
+  // Keep-alive ping — prevents browser/proxy from killing an idle connection
+  // while Render is working. Pings the health endpoint every 30s.
+  let keepAliveInterval;
+  function startKeepAlive() {
+    keepAliveInterval = setInterval(() => {
+      fetch(`${API_URL}/docs`).catch(() => {});
+    }, 30000);
+  }
+  function stopKeepAlive() {
+    clearInterval(keepAliveInterval);
+  }
+
   let timeout;
   try {
     const controller = new AbortController();
-    timeout = setTimeout(() => controller.abort(), 360000); // 6 min timeout
+    timeout = setTimeout(() => controller.abort(), 480000); // 8 min timeout — pipeline takes ~400s
+
+    startKeepAlive();
 
     const response = await fetch(`${API_URL}/generate-blog`, {
       method: 'POST',
@@ -148,6 +163,7 @@ async function generateBlog() {
     });
 
     clearTimeout(timeout);
+    stopKeepAlive();
     clearProgressTimers();
 
     if (!response.ok) {
@@ -167,13 +183,14 @@ async function generateBlog() {
 
   } catch (err) {
     clearTimeout(timeout);
+    stopKeepAlive();
     clearProgressTimers();
     hide('progressSection');
     show('formSection');
     btn.disabled = false;
     document.getElementById('btnText').textContent = 'Generate Blog';
     if (err.name === 'AbortError') {
-      alert('Request timed out after 6 minutes. Check the backend logs before retrying.');
+      alert('Request timed out. The blog is still generating on the server — please wait 30 seconds and try again.');
     } else {
       alert(err.message || 'Something went wrong. Please try again.');
     }

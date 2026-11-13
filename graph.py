@@ -291,8 +291,9 @@ def node_write(state: BlogState) -> BlogState:
     # Strip any leaked internal labels from the final draft
     # (hook generator REASON:, ending generator labels, etc.)
     import re as _re2
-    label_patterns = [
-        r'^REASON\s*:.*$',
+
+    # Line-level labels — entire line is a label artifact, delete the whole line
+    line_label_patterns = [
         r'^TYPE\s+\d+\s*[—\-].*:.*$',
         r'^CHOSEN\s+HOOK\s*:.*$',
         r'^ENDING\s+[A-C]\s*[—\-].*:?\s*$',
@@ -300,8 +301,20 @@ def node_write(state: BlogState) -> BlogState:
         r'^FINAL\s+TEXT\s*:.*$',
         r'^---CHOSEN---.*$',
     ]
-    for pat in label_patterns:
+    for pat in line_label_patterns:
         draft = _re2.sub(pat, '', draft, flags=_re2.IGNORECASE | _re2.MULTILINE)
+
+    # Inline label artifacts — these leak into paragraph text, strip just the label prefix
+    # Handles: "REASON: ...", "**REASON:** ...", "REASON — ..." anywhere in a line
+    inline_label_patterns = [
+        # REASON: or **REASON:** at start of any line (with optional bold markdown)
+        r'^\*{0,2}REASON\s*:{0,1}\*{0,2}\s*',
+        # TYPE 1 — UNCOMFORTABLE TRUTH: inline variant
+        r'^\*{0,2}TYPE\s+\d+\s*[—\-][^:]*:\*{0,2}\s*',
+    ]
+    for pat in inline_label_patterns:
+        draft = _re2.sub(pat, '', draft, flags=_re2.IGNORECASE | _re2.MULTILINE)
+
     # Collapse multiple blank lines left by stripping
     draft = _re2.sub(r'\n{3,}', '\n\n', draft).strip()
 
@@ -511,6 +524,31 @@ def node_post_revision_check(state: BlogState) -> BlogState:
                 state["final_blog"] = truncated
             break
 
+    # ── Strip CLAIM-XXX citation labels from reader-facing blog ───────────────
+    # These are internal research traceability markers — they must NEVER appear
+    # in the published output. Strip all variants:
+    #   (CLAIM-001)   [CLAIM-001]   CLAIM-001   (CLAIM-001; CLAIM-002)
+    state["final_blog"] = _re.sub(
+        r'[\(\[]?CLAIM-\d{3}(?:[;,]\s*CLAIM-\d{3})*[\)\]]?',
+        '',
+        state["final_blog"],
+        flags=_re.IGNORECASE
+    )
+    # Clean up any double spaces left by the removal
+    state["final_blog"] = _re.sub(r'  +', ' ', state["final_blog"])
+    # Clean up space before punctuation: " ." " ," " )" left after stripping
+    state["final_blog"] = _re.sub(r' +([.,;:!?)])', r'\1', state["final_blog"])
+
+    # ── Strip any REASON: / **REASON:** labels that survived to final_blog ────
+    # These leak from the hook generator when it includes its selection rationale
+    # in the opening paragraph. Strip the prefix, keep the sentence that follows.
+    state["final_blog"] = _re.sub(
+        r'^\*{0,2}REASON\s*:{0,1}\*{0,2}\s*',
+        '',
+        state["final_blog"],
+        flags=_re.IGNORECASE | _re.MULTILINE
+    )
+
     return state
 
 @_guarded
@@ -585,6 +623,10 @@ def quality_router(state: BlogState) -> str:
     pass_match = _re.search(r'\bpass\s*[:\-]\s*(yes|no)\b', critique, _re.IGNORECASE)
     if pass_match:
         return "done" if pass_match.group(1).lower() == "yes" else "revise"
+
+    # Q5 CONTRADICTION is always a forced revision regardless of overall Pass verdict
+    if _re.search(r'\bQ5\b.*\bCONTRADICTION\b', critique, _re.IGNORECASE):
+        return "revise"
 
     # Fallback: old score format
     scores = _re.findall(r'score:\s*(\d+)/10', critique, _re.IGNORECASE)

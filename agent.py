@@ -721,7 +721,6 @@ TYPE 4 — PROVOCATIVE QUESTION: [sentence]
 TYPE 5 — SURPRISING FACT: [sentence]
 
 CHOSEN HOOK: [the single best one, copied exactly]
-REASON: [one sentence on why this one wins for this topic and audience]
 """
     result = _invoke(prompt, temperature=0.7)
 
@@ -735,14 +734,15 @@ REASON: [one sentence on why this one wins for this topic and audience]
 
     # Fallback: take the last short line that doesn't look like a label
     if not chosen:
-        skip_starts = ("type ", "chosen", "reason", "---", "hook ")
+        skip_starts = ("type ", "chosen", "reason", "---", "hook ", "**reason", "*reason")
         candidates = [
-            l.strip().strip('"').strip("'")
+            l.strip().strip('"').strip("'").strip("*")
             for l in result.split("\n")
             if l.strip()
             and len(l.strip()) > 15
             and len(l.strip()) < 200
             and not any(l.strip().lower().startswith(s) for s in skip_starts)
+            and "REASON" not in l.upper()
         ]
         chosen = candidates[-1] if candidates else result[:200]
 
@@ -1252,6 +1252,44 @@ BANNED WORDS: utilize, leverage, impactful, holistic, synergy, paradigm,
 "at the end of the day", "game changer", "deep dive", "journey", "testament"
 
 ═══════════════════════════════════════
+NATURAL LANGUAGE — THE SOPHISTICATION TRAP
+═══════════════════════════════════════
+
+The most common failure in this writing is not being too simple. It is being artificially sophisticated.
+
+These phrases are banned because they sound impressive but say nothing concrete:
+
+BANNED ABSTRACT DRAMATIC PHRASES:
+- "the statistical fingerprint of..."
+- "the crucible of..."
+- "transcends mere..."
+- "the myth of the invincible..."
+- "the weight of a single..."
+- "the paradox of..."
+- "redefines what it means to..."
+- "legacy reshaped"
+- "forged in the fire of..."
+- "the anatomy of..."
+- "the architecture of..."
+- Any phrase that uses a physical noun (crucible, fingerprint, forge, architecture)
+  as a metaphor for something abstract
+
+THE TEST: Read every sentence and ask — could this sentence be made more concrete?
+If a sentence contains an abstract noun that could be replaced with a specific thing,
+a person, a moment, or a number — replace it.
+
+WRONG: "The statistical fingerprint of pressure reveals his true quality."
+RIGHT: "He averaged more under pressure than he did in comfortable chases. That gap is the story."
+
+WRONG: "These knocks transcend mere runs."
+RIGHT: "Nobody remembers the scorecard from that game. They remember him."
+
+WRONG: "The myth of the invincible hero is built on the very moments he failed."
+RIGHT: "The reason fans love him so much is partly because he didn't always win. The losses made the wins feel earned."
+
+Write like a person explaining something to a smart friend — not like someone trying to sound like a writer.
+
+═══════════════════════════════════════
 NATURAL WRITING — THE REAL RULES
 ═══════════════════════════════════════
 
@@ -1326,6 +1364,35 @@ If no CLAIM-ID exists for a specific detail — describe the PATTERN instead:
 
 RULE: If a stat IS in the registry — use it confidently, cite CLAIM-ID in parentheses.
 RULE: If a stat is NOT in the registry — no number. The analytical point still stands without it.
+
+═══════════════════════════════════════
+THE SCENE-FIRST RULE
+═══════════════════════════════════════
+
+Before explaining the significance of any important moment — show the moment.
+
+The reader needs to be IN the situation before you tell them what it means.
+Every important innings, match, decision, or event must pass this test:
+
+THE FOUR QUESTIONS (answer all four before explaining significance):
+1. What was the match situation? (score, overs left, wickets down, target)
+2. What made it difficult? (opposition, conditions, pressure, what had just happened)
+3. What was the person trying to do? (survive, attack, rotate strike, win from nowhere)
+4. How did it feel as it unfolded? (the tension, the turning point, the moment it became memorable)
+
+WRONG (skips the moment, jumps to significance):
+"His innings at Edgbaston highlighted his ability to perform under pressure against
+a strong English attack. The knock was remarkable given the circumstances."
+
+RIGHT (puts the reader in the situation first):
+"India were chasing. Anderson had already taken two. The pitch had movement.
+Kohli came in at a moment when most batsmen would have played for survival —
+and instead he played every ball on its merit, never defensive, never reckless.
+He scored 149. It still wasn't enough. England won by 31 runs.
+That's the innings. The question is why it matters more than half his centuries that ended in victory."
+
+Apply this to every match, game, event, or moment you reference.
+Don't explain it. First make the reader feel it. Then explain it.
 
 ═══════════════════════════════════════
 THE ONE TEST
@@ -1703,8 +1770,20 @@ Q5 — DOES THE ENDING DELIVER SOMETHING NEW?
 ─────────────────────────────────────────
 The ending should say something the reader couldn't have predicted from the opening.
 Not a summary. Not "this proves that X." A new thought.
-Answer: NEW / SUMMARY
-If SUMMARY — what should the ending actually say? (One sentence of direction, not the full ending):
+
+ALSO CHECK — THESIS CONTRADICTION:
+Read the title or opening premise. Now read the final paragraph.
+Does the ending AGREE with the opening argument — or does it accidentally argue the opposite?
+
+Example of a contradiction to catch:
+- Title says: "Why the losses were his greatest innings"
+- Ending says: "brilliance without victory is still a hollow triumph"
+- That ending CONTRADICTS the thesis. The blog promised to argue losses have value,
+  then concluded losses prove the opposite. Flag this as a critical failure.
+
+Answer: NEW / SUMMARY / CONTRADICTION
+If SUMMARY — what should the ending actually say? (One sentence of direction)
+If CONTRADICTION — quote the specific line that contradicts the opening, and state what the ending should argue instead:
 
 ─────────────────────────────────────────
 Q6 — THE ONE THING TEST
@@ -1835,9 +1914,19 @@ WRONG: "To understand what made him different, we need to look at his technical 
 RIGHT: "His back-lift was always too high. Everyone could see it. Almost no one saw what he did about it."
 
 ─────────────────────────────────────────
-FIX 5 — ENDING (if Q5 = SUMMARY)
+FIX 5 — ENDING (if Q5 = SUMMARY or CONTRADICTION)
 ─────────────────────────────────────────
 Delete the current ending entirely. Write a new final section: 3-5 sentences.
+
+CRITICAL — IF Q5 = CONTRADICTION:
+The ending is arguing the OPPOSITE of what the blog promised in the opening.
+Re-read the title/opening premise before writing the new ending.
+The new ending must COMPLETE that argument — not undermine it.
+
+Example contradiction to fix:
+- Blog premise: "the losses were his greatest innings"
+- Wrong ending: "brilliance without victory is a hollow triumph" ← says losses are bad
+- Right ending: something that lands WHY the losses made him, not why they diminished him
 
 The ending must deliver something the reader could NOT have predicted from the opening —
 but once they read it, it feels completely inevitable.
@@ -1846,7 +1935,7 @@ WRONG (summary ending):
 "Dhoni's greatness as a finisher comes from his technique, his mental strength, and his experience.
 These qualities combined to make him the best in the business."
 
-RIGHT (landing something new):
+RIGHT (landing something new, consistent with the opening argument):
 "The six everyone remembers took two seconds. What it took to be trusted with that moment
 took fifteen years. Most people got the highlight. They missed the work that made it possible."
 

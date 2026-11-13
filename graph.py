@@ -642,6 +642,10 @@ def quality_router(state: BlogState) -> str:
     if _re.search(r'\bQ5\b.*\bCONTRADICTION\b', critique, _re.IGNORECASE):
         return "revise"
 
+    # Q7 REPETITIVE is always a forced revision — repeated content is a structural failure
+    if _re.search(r'\bQ7\b.*\bREPETITIVE\b', critique, _re.IGNORECASE):
+        return "revise"
+
     # Fallback: old score format
     scores = _re.findall(r'score:\s*(\d+)/10', critique, _re.IGNORECASE)
     if scores:

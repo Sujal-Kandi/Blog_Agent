@@ -562,11 +562,25 @@ Based on topic type choose the right style:
 Writing Style: (name the style)
 Why this fits: (one sentence)
 
-STEP 4 — STRUCTURE
+STEP 4 — STRUCTURE AND CHAPTER CONTRACT
 Opening Hook: (specific — a scene, stat, contradiction or uncomfortable truth for THIS topic)
-Sections: (5-7 headings, each with one line on what it must prove — and how it moves the tension forward)
 Core Argument: (the single insight the reader leaves with — must resolve the tension from Step 2)
 Conclusion: (how to land it — challenge, reframe, hard truth or memorable final thought)
+
+Sections: list 5-7 sections using this format for EACH one:
+
+SECTION [N]: [Heading]
+OWNS: [The one idea this section and ONLY this section develops. One sentence.]
+INTRODUCES: [The specific fact, moment, or angle introduced here for the first time.]
+FORBIDDEN: [What this section must NOT repeat from previous sections.]
+ADVANCES: [How does this section move the central argument forward? What does the reader understand after this section that they didn't before?]
+
+CHAPTER CONTRACT RULES:
+- Every section must introduce something new — a new fact, a new angle, a new layer of the argument.
+- If a match, event, or fact was used in an earlier section, it cannot be the main focus of a later section.
+  It can be referenced briefly only if it is being developed further — not explained again.
+- The story moves forward. It never circles back to explain something already explained.
+- The reader should feel they are accumulating understanding, not reading the same thing rephrased.
 
 STEP 5 — TONE AND VOICE
 Tone: (e.g. analytical-urgent / warm-curious / direct-challenging)
@@ -1374,6 +1388,48 @@ STRUCTURE
   The reader should feel the section start, not be told it is starting.
 
 ═══════════════════════════════════════
+FORWARD-ONLY RULE — NO REPETITION
+═══════════════════════════════════════
+
+This is the most important structural rule. Read it before writing each section.
+
+THE RULE: Every section must move the story forward. It must introduce something
+the reader does not yet know — a new fact, a new angle, a new layer of the argument.
+Once something has been explained, it is done. The next section builds on top of it.
+
+HOW TO CHECK BEFORE WRITING EACH SECTION:
+Ask yourself: "What does this section introduce that no previous section has introduced?"
+If the answer is "nothing new — I'm explaining the same match/event/point again" — stop.
+Either deepen the existing idea (go one layer further) or move to the next idea entirely.
+
+THE THREE VIOLATIONS — these will make the blog feel repetitive:
+
+VIOLATION 1 — SAME MATCH, SAME POINT:
+You already used Adelaide 141 to show X. Now you're using Adelaide 141 to show X again.
+FIX: Either develop X further (what does X reveal that you haven't said yet?) or drop it.
+
+VIOLATION 2 — SAME CONCLUSION, DIFFERENT WORDS:
+"His innings showed his quality under pressure." (Section 1)
+"These knocks reveal his ability to perform when it matters most." (Section 3)
+Both sentences say the same thing. One of them must go.
+FIX: The second mention must add a specific new dimension — not restate the first.
+
+VIOLATION 3 — SAME FACT, NEW SECTION:
+Kohli scored 141 at Adelaide. You mentioned this in Section 1.
+Section 3 opens with "In Adelaide, Kohli scored 141..."
+FIX: If you need to reference it again, do it in one clause — then immediately say something
+new about it. Never re-explain a fact that has already been established.
+
+THE FORWARD TEST — run this after writing each section:
+"If a reader skipped the previous section and read only this one,
+would they learn something new — or just get the same information again?"
+If the answer is "same information" — rewrite before moving on.
+
+ONE MATCH = ONE SECTION:
+Each major match or innings should be the primary focus of ONE section only.
+After that section, the match becomes background — a brief reference, never a re-explanation.
+
+═══════════════════════════════════════
 FACT RULES — CLAIM-FIRST WRITING
 ═══════════════════════════════════════
 
@@ -1830,10 +1886,43 @@ Is it the right thing: YES / NO
 If NO — what should they remember instead:
 
 ─────────────────────────────────────────
+Q7 — REPETITION AUDIT
+─────────────────────────────────────────
+This is a full scan of the blog for repeated content.
+Read every section and track which matches, events, and conclusions appear more than once.
+
+STEP 1 — LIST THE REPEATED FACTS:
+Go through the blog section by section.
+For each named match, innings, event, or analytical conclusion — note which sections it appears in.
+
+Format:
+- [Match/Fact]: appears in Section X and Section Y
+- [Conclusion/Insight]: appears in Section X and Section Z
+
+Only list items that appear in 2 or more sections.
+
+STEP 2 — CLASSIFY EACH REPEAT:
+
+For each repeated item, classify it as one of:
+  DEEPENED — the second mention adds a genuinely new layer (new angle, new consequence, new dimension)
+              This is acceptable. The match is being developed, not repeated.
+  RESTATED  — the second mention makes the same point in different words.
+              This is a problem. One instance must be cut or replaced with new content.
+  RE-EXPLAINED — the second mention explains the match/event as if the reader hasn't seen it yet.
+              This is the worst case. The section needs to be rewritten around a different idea.
+
+STEP 3 — VERDICT:
+Answer: CLEAN / REPETITIVE
+CLEAN = no RESTATED or RE-EXPLAINED repeats found.
+REPETITIVE = one or more RESTATED or RE-EXPLAINED repeats found.
+
+If REPETITIVE — list each offending section and one sentence on what it should do instead:
+
+─────────────────────────────────────────
 OVERALL
 ─────────────────────────────────────────
 Pass: YES or NO
-(YES only if Q1=YES, Q2=SPINE, Q5=NEW, and at most one failure in Q3/Q4/Q6)
+(YES only if Q1=YES, Q2=SPINE, Q5=NEW, Q7=CLEAN, and at most one failure in Q3/Q4/Q6)
 Priority Fix: (the single change that would most elevate this blog — be specific, one sentence)
 
 Blog:
@@ -1976,6 +2065,36 @@ took fifteen years. Most people got the highlight. They missed the work that mad
 
 3-5 sentences. No calls to action. No motivational wrap-up.
 Final sentence is a statement. Short. It lands in silence.
+
+─────────────────────────────────────────
+FIX 6 — REPETITION (if Q7 = REPETITIVE)
+─────────────────────────────────────────
+The critic listed the offending sections and classified each repeat as RESTATED or RE-EXPLAINED.
+Fix each one using this approach:
+
+FOR RESTATED repeats (same conclusion said differently):
+Delete the repeated sentence entirely.
+The section must still make sense without it — if it doesn't, replace it with a genuinely
+new observation about the same subject.
+
+WRONG: Section 3 ends with "These knocks reveal his quality under pressure."
+       Section 4 ends with "His ability to perform when it matters is what defines him."
+RIGHT: Keep the sharper one. Delete the other. If Section 4 needs an ending,
+       write one that says something Section 3 didn't — a new consequence, a new dimension.
+
+FOR RE-EXPLAINED repeats (same match described as if for the first time):
+The section is built around an event the reader already knows.
+Rewrite the section's opening so it starts with what is NEW about this angle —
+not with the event itself.
+
+WRONG: "In Adelaide, India needed 364 to win. Kohli walked in at 54/2 and scored 141..."
+       (reader has already been told this — this is a re-explanation)
+RIGHT: Start with the new angle: "What that Adelaide innings proved about his captaincy
+       was separate from what it proved about his batting..."
+       The event is referenced in one clause. The new idea gets the paragraph.
+
+RULE: After fixing each repetition, the same match or conclusion must not appear
+as the main subject of two different sections in the final blog.
 
 ═══════════════════════════════════════
 HARD RULES

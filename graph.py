@@ -170,10 +170,19 @@ def node_hook(state: BlogState) -> dict:
 @_guarded
 def node_ending(state: BlogState) -> dict:
     """
-    Ending Generator — generates 3 candidate endings after the draft exists.
-    Appends a sharp closing paragraph AFTER the existing last section rather
-    than replacing it. This preserves the last section's body content while
-    still landing a strong close.
+    Ending Generator — replaces the final paragraph of the blog with a sharper close.
+
+    Strategy: REPLACE, not APPEND.
+    The blog already has a natural last paragraph written by the writer node.
+    Appending a second closer creates two endings with potentially different
+    tones — the double-ending bug. Instead we:
+      1. Split the blog into everything-before-last-paragraph + last-paragraph.
+      2. Generate a new ending calibrated to the blog's topic type.
+      3. Swap the last paragraph out for the new one.
+
+    The plan is passed through so generate_ending() can detect topic type and
+    pick the correct register (grounded vs narrative) for the ending style menu.
+
     Runs after grounding_score, before critic.
     """
     import re as _re
@@ -181,15 +190,25 @@ def node_ending(state: BlogState) -> dict:
     _log = _logging.getLogger("blog_agent")
 
     draft = state["final_blog"]
-    ending = generate_ending(draft, state["topic"], state.get("insights", ""), state.get("narrative", ""))
+    plan  = state.get("plan", "")
+
+    ending = generate_ending(
+        draft,
+        state["topic"],
+        state.get("insights", ""),
+        state.get("narrative", ""),
+        plan,
+    )
 
     if not ending or not ending.strip():
         _log.warning("[ENDING] Empty result — keeping original ending")
         return {"final_blog": draft}
 
-    # Strip any label artifacts that leaked through
+    # Strip label artifacts that may have leaked through
     label_pattern = _re.compile(
-        r'^(ENDING\s+[A-C]|CHOSEN ENDING|FINAL TEXT|OPTION\s+[A-C]|---CHOSEN---|REFRAME:|CHALLENGE:|HARD TRUTH:).*$',
+        r'^(ENDING\s+[A-C]|CHOSEN ENDING|FINAL TEXT|OPTION\s+[A-C]|---CHOSEN---|'
+        r'VERDICT:|IMPLICATION:|UNCOMFORTABLE TRUTH:|CIRCLE BACK:|EARNED SILENCE:|'
+        r'REFRAME:|CHALLENGE:|HARD TRUTH:).*$',
         _re.IGNORECASE | _re.MULTILINE
     )
     ending_clean = label_pattern.sub("", ending).strip()
@@ -199,30 +218,52 @@ def node_ending(state: BlogState) -> dict:
         _log.warning("[ENDING] Ending was all labels after stripping — keeping original")
         return {"final_blog": draft}
 
-    # Strategy: APPEND the ending after the full existing blog.
-    # We do NOT replace the last section — that section's body content is preserved.
-    # The ending becomes a final unlabelled closing paragraph after all sections,
-    # so the blog retains its full analytical content and still lands a sharp close.
+    # ── Split: body (everything up to and including the last section heading
+    #    and its body paragraphs) vs the final closing paragraph. ─────────────
     #
-    # To avoid a double-ending (the last section may already close well), we first
-    # strip the last 1–2 sentences of the draft IF they look like a generic summary
-    # close (e.g. "In conclusion...", "Ultimately...", "Together these...").
-    summary_closers = _re.compile(
-        r'(In conclusion[^.]*\.|Ultimately[^.]*\.|Together[^.]*\.|'
-        r'In summary[^.]*\.|To summarize[^.]*\.|'
-        r'At the end of the day[^.]*\.)\s*$',
-        _re.IGNORECASE
-    )
-    draft_trimmed = summary_closers.sub("", draft).rstrip()
+    # Algorithm:
+    #   - Split the blog by double-newlines into paragraph blocks.
+    #   - Walk backwards to find the last non-empty, non-heading paragraph.
+    #   - That is the "last paragraph" we replace.
+    #   - Everything before it is the "body" we keep untouched.
+    #
+    # Edge case: if the last section only has one paragraph (the heading +
+    # one body paragraph), we keep the heading and replace only the body paragraph.
 
-    new_final_blog = draft_trimmed + "\n\n" + ending_clean
+    paragraphs = draft.split("\n\n")
+    # Find the last non-empty, non-heading block
+    last_para_idx = None
+    for i in range(len(paragraphs) - 1, -1, -1):
+        block = paragraphs[i].strip()
+        if block and not block.startswith("#"):
+            last_para_idx = i
+            break
 
-    # Safety: appending should never shrink the blog — if it somehow did, revert.
-    if len(new_final_blog.split()) < len(draft.split()):
-        _log.warning("[ENDING] Appended blog shorter than original — keeping original")
+    if last_para_idx is None:
+        # Couldn't find a replaceable paragraph — fall back to append
+        _log.warning("[ENDING] Could not locate last paragraph — falling back to append")
+        new_final_blog = draft.rstrip() + "\n\n" + ending_clean
+    else:
+        body_parts  = paragraphs[:last_para_idx]
+        body        = "\n\n".join(body_parts).rstrip()
+        new_final_blog = body + "\n\n" + ending_clean
+
+    # Safety: replacement should never lose more than 15% of the blog's words
+    # (the last paragraph we dropped should be small relative to the whole).
+    before_words = len(draft.split())
+    after_words  = len(new_final_blog.split())
+    if after_words < before_words * 0.85:
+        _log.warning(
+            f"[ENDING] Replacement shrank blog too much "
+            f"({before_words} → {after_words} words) — keeping original"
+        )
         return {"final_blog": draft}
 
-    _log.info(f"[ENDING] Ending appended successfully | added_words={len(ending_clean.split())}")
+    _log.info(
+        f"[ENDING] Last paragraph replaced | "
+        f"before={before_words} after={after_words} words | "
+        f"ending_words={len(ending_clean.split())}"
+    )
     return {"final_blog": new_final_blog}
 
 

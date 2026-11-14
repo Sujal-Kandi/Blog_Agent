@@ -864,27 +864,119 @@ CHOSEN HOOK: [the single best one, copied exactly]
 
 
 @traceable(name="ending_generator")
-def generate_ending(blog: str, topic: str, insights: str, narrative: str = "") -> str:
+def generate_ending(blog: str, topic: str, insights: str, narrative: str = "", plan: str = "") -> str:
     """
     Ending Generator — runs after the draft is written, before citations.
-    Upgraded: enforces a NEW insight at the end, not a summary.
-    The ending must land on the one thing the whole blog was building toward.
+    Topic-type-aware: picks ending styles that match the register of the blog.
+    Analytical/business blogs get evidence-grounded closers.
+    Narrative/sports blogs get circle-back or uncomfortable-truth closers.
+    Abstract poetic closers ("tune your ear to the silence...") are banned
+    for data-driven topics — they create a tone register mismatch.
     Returns ONLY the clean final paragraph text — no labels, no metadata.
     """
     _check_cancelled()
     logger.info(f"[ENDING] Generating ending | topic='{topic[:60]}'")
     start = time.time()
 
+    import re as _re
+
     blog_tail      = blog[-1_500:]  if blog     else ""
     insights_input = insights[:800] if insights else ""
+
+    # ── Detect topic type from strategy plan ──────────────────────────────────
+    topic_type_match = _re.search(r'topic type[:\s]+([A-Za-z]+)', plan, _re.IGNORECASE)
+    topic_type = topic_type_match.group(1).strip().lower() if topic_type_match else "general"
+
+    # Ending style menus — keyed by register.
+    # "grounded" register = analytical, business, educational, science, health, opinion
+    #   → styles that stay in the evidence/argument tone. No metaphorical zooming out.
+    # "narrative" register = sports, historical, review, general
+    #   → styles that use story, scene, or emotional landing.
+    GROUNDED_REGISTER = {"analytical", "business", "educational", "science", "health", "opinion", "technical"}
+    NARRATIVE_REGISTER = {"sports", "historical", "review"}
+
+    if topic_type in GROUNDED_REGISTER:
+        ending_options = """
+A — THE VERDICT
+State the conclusion the evidence has been building toward — plainly, without hedging.
+One sentence that says the thing most people in this space won't say out loud.
+No metaphor. No zoom-out. The idea, stated directly.
+
+B — THE IMPLICATION
+The blog proved something. Now name what it means for the reader's next decision.
+Not advice. Not a CTA. The logical next step that follows inevitably from the argument.
+Concrete. Specific to this topic. The reader nods and knows what to do differently.
+
+C — THE UNCOMFORTABLE TRUTH
+Name the thing the blog has been circling but never said directly.
+True. Slightly uncomfortable. Impossible to unsay once read.
+Land it in one clean declarative sentence. No softening."""
+
+        tone_guard = """
+TONE REGISTER — THIS IS A DATA-DRIVEN BLOG:
+The ending must stay in the same analytical register as the rest of the article.
+DO NOT zoom out into philosophical abstraction.
+DO NOT use metaphorical language ("tune your ear to the silence", "the chorus of capital").
+DO NOT write poetry where the reader expects a conclusion.
+Every sentence must be as grounded and specific as the evidence sections above it."""
+
+    elif topic_type in NARRATIVE_REGISTER:
+        ending_options = """
+A — THE CIRCLE BACK
+Return to the opening moment or image — but it means something completely different now.
+The reader has changed. Show it through the new meaning the opening image carries.
+Don't announce the change. The image does the work.
+
+B — THE UNCOMFORTABLE TRUTH
+Name the thing the blog has been circling but never said directly.
+True. Slightly uncomfortable. Impossible to unsay once read.
+Land it in one clean declarative sentence.
+
+C — THE EARNED SILENCE
+The final beat of the story, told in 3–4 sentences.
+The last sentence should be short — a single observation the reader can sit with.
+No resolution. No lesson. Just the last image that makes the whole journey feel true."""
+
+        tone_guard = """
+TONE REGISTER — THIS IS A NARRATIVE BLOG:
+The ending should feel like the last frame of a film, not a conclusion slide.
+Stay grounded in specific people, moments, and details — not abstract ideas.
+Avoid philosophical zooming out that disconnects from the story."""
+
+    else:
+        # General fallback — balanced options, still ban pure abstract poetic register
+        ending_options = """
+A — THE VERDICT
+State the conclusion plainly. One sentence. No hedging, no metaphor.
+The thing the whole blog was building toward, said directly.
+
+B — THE UNCOMFORTABLE TRUTH
+Name the thing the blog circled but never said directly.
+True. Slightly uncomfortable. One clean declarative sentence.
+
+C — THE CIRCLE BACK
+Return to the opening moment — but it means something different now.
+Don't announce the change. Let the image carry it."""
+
+        tone_guard = """
+TONE REGISTER:
+Stay in the same register as the rest of the blog.
+If the blog is evidence-based, the ending must be too.
+If it's narrative, the ending should be a moment, not a thesis.
+No abstract philosophical zooming out that breaks from the established voice."""
 
     # Extract the payoff beat from narrative if available
     payoff_note = ""
     if narrative and narrative.strip():
-        import re as _re
-        payoff_match = _re.search(r'(?:payoff|final beat|beat\s*7|last beat)[^\n]*\n([^\n]+)', narrative, _re.IGNORECASE)
+        payoff_match = _re.search(
+            r'(?:payoff|final beat|beat\s*7|last beat)[^\n]*\n([^\n]+)',
+            narrative, _re.IGNORECASE
+        )
         if payoff_match:
-            payoff_note = f"\nThe blog was building toward this payoff: {payoff_match.group(1).strip()}\nThe ending MUST land on this or something deeper — not a restatement of it.\n"
+            payoff_note = (
+                f"\nThe blog was building toward this payoff: {payoff_match.group(1).strip()}\n"
+                f"The ending MUST land on this or something deeper — not a restatement of it.\n"
+            )
 
     prompt = f"""
 You are writing the final section of a blog about: "{topic}"
@@ -898,30 +990,19 @@ CURRENT ENDING (what exists — you are REPLACING this):
 
 {SHARED_WRITING_RULES}
 
+{tone_guard}
+
 Your job: write an ending that makes the reader feel the whole journey was worth it.
 
 THE ONE RULE THAT MATTERS:
-The ending must say something the reader could NOT have predicted from the opening — 
+The ending must say something the reader could NOT have predicted from the opening —
 but once they read it, it feels completely inevitable.
 Not a summary. Not "in conclusion." Not "this proves that X."
 A NEW thought. The thing the blog was quietly building toward.
 
 Write 3 candidate endings (A, B, C). Each takes a different approach:
 
-A — THE REFRAME
-Zoom out until the topic means something the reader never expected.
-The last sentence should make the reader see the world slightly differently.
-The topic is now a lens for something bigger.
-
-B — THE UNCOMFORTABLE TRUTH  
-Name the thing the blog has been circling around but never said directly.
-The thing that's true, slightly uncomfortable, and impossible to unsay once read.
-Land it in one clean, declarative sentence.
-
-C — THE CIRCLE BACK
-Return to the opening moment or image — but it means something completely different now.
-The reader has changed. Show them how. Don't tell them they've changed — show it
-through the new meaning the opening image carries.
+{ending_options}
 
 RULES FOR ALL THREE:
 - 3 to 5 sentences. Never fewer than 3.
@@ -932,6 +1013,7 @@ RULES FOR ALL THREE:
 
 After the 3 candidates write exactly: ---CHOSEN---
 Then write ONLY the full text of the best ending. No labels. No commentary.
+Choose the ending that best matches the register and argument of the blog above.
 """
     result = _invoke(prompt, temperature=0.65)
 
@@ -939,22 +1021,26 @@ Then write ONLY the full text of the best ending. No labels. No commentary.
         final_text = result.split("---CHOSEN---", 1)[1].strip()
     else:
         skip_starts = ("ending a", "ending b", "ending c", "chosen",
-                       "final text", "---", "option", "reframe", "hard truth", "circle")
+                       "final text", "---", "option", "verdict", "implication",
+                       "uncomfortable truth", "circle back", "earned silence")
         paragraphs = [p.strip() for p in result.split("\n\n") if p.strip()]
         clean = [p for p in paragraphs
                  if not any(p.lower().startswith(s) for s in skip_starts)]
         final_text = clean[-1] if clean else ""
 
-    skip_prefixes = ("ending a", "ending b", "ending c", "chosen ending",
-                     "final text", "---", "option a", "option b", "option c",
-                     "reframe:", "hard truth:", "circle back:")
+    skip_prefixes = (
+        "ending a", "ending b", "ending c", "chosen ending",
+        "final text", "---", "option a", "option b", "option c",
+        "verdict:", "implication:", "uncomfortable truth:", "circle back:",
+        "earned silence:", "reframe:", "hard truth:",
+    )
     clean_lines = [
         line for line in final_text.split("\n")
         if not any(line.strip().lower().startswith(p) for p in skip_prefixes)
     ]
     final_text = "\n".join(clean_lines).strip()
 
-    logger.info(f"[ENDING] Done | chars={len(final_text)} | duration={time.time()-start:.1f}s")
+    logger.info(f"[ENDING] Done | topic_type={topic_type} | chars={len(final_text)} | duration={time.time()-start:.1f}s")
     return final_text
 
 

@@ -1413,6 +1413,11 @@ WRITING CHECKS (run after each paragraph):
 - No significance announcements: "This is crucial", "This reveals", "This demonstrates" — delete them. The paragraph before should already make the reader feel it.
 - One stake per section: find the thing about this point that is surprising or counterintuitive. Write from that place.
 
+PER-SECTION CHECKPOINT (run before writing each section):
+1. ANCHOR: Where is the story anchor in this section? Name the specific moment, person, or scene from the anchor that this section touches. If you can't name it — find a way to bring the anchor back before finishing the section.
+2. INSIDE OR WATCHING: Is the reader inside this scene or watching it from outside? If watching — rewrite the opening sentence of this section until the reader is in it.
+3. NEW LAYER: What does this section reveal that no previous section has? One sentence. If the answer is "more of the same" — deepen or cut.
+
 ═══════════════════════════════════════
 STRUCTURE
 ═══════════════════════════════════════

@@ -1411,6 +1411,7 @@ WRITING CHECKS (run after each paragraph):
 - Rhythm: no three consecutive sentences at the same length. Vary deliberately. Short sentences land.
 - No throat-clearing openers: "This shows...", "It is worth noting...", "As we can see..." — delete them.
 - No significance announcements: "This is crucial", "This reveals", "This demonstrates" — delete them. The paragraph before should already make the reader feel it.
+- No double-tap: write the insight once, then move on. If the sentence after your point restates the same idea in different words — delete it. Trust the first sentence.
 - One stake per section: find the thing about this point that is surprising or counterintuitive. Write from that place.
 
 PER-SECTION CHECKPOINT (run before writing each section):
@@ -1833,12 +1834,18 @@ The reader should be IN the experience — not watching from outside.
 Signs: passive scene-setting, "he did X", "the team did Y", conditions described from a distance.
 Quote the opening sentence of any section where the reader is observing instead of living it.
 
+PATTERN F — DOUBLE-TAP:
+Find any place where two consecutive sentences make the same point in different words.
+The second sentence adds no new information — it just confirms the first.
+Signs: "In other words...", "This means that...", "Put simply...", or any restatement without new content.
+Quote both sentences. The second one should be cut.
+
 For each pattern found:
 - Quote the offending text
 - Write ONE rewritten version that fixes it
 
 Overall answer: NATURAL / ROBOTIC
-(ROBOTIC if any pattern found in 2+ sections. NATURAL only if the blog is clean across all five.)
+(ROBOTIC if any pattern found in 2+ sections. NATURAL only if the blog is clean across all six.)
 
 ─────────────────────────────────────────
 Q5 — DOES THE ENDING DELIVER SOMETHING NEW?

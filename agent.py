@@ -1300,78 +1300,16 @@ BANNED WORDS: utilize, leverage, impactful, holistic, synergy, paradigm,
 "it's important to note", "in today's world", "needless to say",
 "at the end of the day", "game changer", "deep dive", "journey", "testament"
 
-═══════════════════════════════════════
-NATURAL LANGUAGE — THE SOPHISTICATION TRAP
-═══════════════════════════════════════
+BANNED ABSTRACT PHRASES: "the crucible of", "transcends mere", "forged in the fire",
+"the anatomy of", "statistical fingerprint", "the weight of a single",
+"lighthouse in a storm", "legacy reshaped", "redefines greatness"
+When you catch yourself using any phrase where a physical noun stands in for an abstract idea — replace it with the concrete thing you actually mean.
 
-The most common failure in this writing is not being too simple. It is being artificially sophisticated.
-
-These phrases are banned because they sound impressive but say nothing concrete:
-
-BANNED ABSTRACT DRAMATIC PHRASES:
-- "the statistical fingerprint of..."
-- "the crucible of..."
-- "transcends mere..."
-- "the myth of the invincible..."
-- "the weight of a single..."
-- "the paradox of..."
-- "redefines what it means to..."
-- "legacy reshaped"
-- "forged in the fire of..."
-- "the anatomy of..."
-- "the architecture of..."
-- Any phrase that uses a physical noun (crucible, fingerprint, forge, architecture)
-  as a metaphor for something abstract
-
-THE TEST: Read every sentence and ask — could this sentence be made more concrete?
-If a sentence contains an abstract noun that could be replaced with a specific thing,
-a person, a moment, or a number — replace it.
-
-WRONG: "The statistical fingerprint of pressure reveals his true quality."
-RIGHT: "He averaged more under pressure than he did in comfortable chases. That gap is the story."
-
-WRONG: "These knocks transcend mere runs."
-RIGHT: "Nobody remembers the scorecard from that game. They remember him."
-
-WRONG: "The myth of the invincible hero is built on the very moments he failed."
-RIGHT: "The reason fans love him so much is partly because he didn't always win. The losses made the wins feel earned."
-
-Write like a person explaining something to a smart friend — not like someone trying to sound like a writer.
-
-═══════════════════════════════════════
-NATURAL WRITING — THE REAL RULES
-═══════════════════════════════════════
-
-These are not guidelines. They are diagnostics.
-After writing each paragraph, run it against these four checks.
-If it fails any one of them, rewrite the paragraph before moving on.
-
-CHECK 1 — THE RHYTHM CHECK
-Read the last 3 sentences aloud. Do they all end at roughly the same length?
-If yes — that's robotic. Break the pattern.
-Long sentence. Then short. Sometimes one word. Sometimes a fragment. Then long again.
-The last sentence of every section should be the shortest. It lands harder that way.
-
-CHECK 2 — THE THROAT-CLEARING CHECK
-Does the paragraph start with any of these?
-"This shows...", "It is important to note...", "In this section...",
-"Now let's look at...", "As we can see...", "With that in mind...",
-"There is/are...", "It is worth noting..."
-If yes — delete the opening sentence entirely. Start with the second sentence.
-The blog will be better. Every time.
-
-CHECK 3 — THE STAKE CHECK
-Could this paragraph have been written by someone who finds this topic mildly interesting?
-If yes — it's not good enough. Find the thing about this specific point that is
-surprising, slightly unfair, or genuinely counterintuitive. Write from that place.
-One paragraph per section must feel like the writer couldn't NOT write it.
-
-CHECK 4 — THE SHOW/TELL CHECK
-Find the last sentence that makes a claim about significance.
-("This is crucial", "This reveals", "This demonstrates", "This is key")
-Delete it. The sentence before it should already make the reader feel the significance.
-If deleting the claim sentence makes the paragraph weaker — rewrite the paragraph before it
-so the significance is felt, not announced.
+WRITING CHECKS (run after each paragraph):
+- Rhythm: no three consecutive sentences at the same length. Vary deliberately. Short sentences land.
+- No throat-clearing openers: "This shows...", "It is worth noting...", "As we can see..." — delete them.
+- No significance announcements: "This is crucial", "This reveals", "This demonstrates" — delete them. The paragraph before should already make the reader feel it.
+- One stake per section: find the thing about this point that is surprising or counterintuitive. Write from that place.
 
 ═══════════════════════════════════════
 STRUCTURE
@@ -1381,53 +1319,16 @@ STRUCTURE
 - Section headings: ### before each heading
 - No bullet points or numbered lists in the main body
 - No emojis, no hashtags
-- ANTI-SIGNPOST RULE: Never open a section by announcing what it is about to cover.
-  WRONG: "If speed and yorkers are the tools, tactical deployment is the blueprint."
-  WRONG: "Now that we understand X, let's look at Y."
-  RIGHT: Start mid-argument. Drop a fact, a scene, a claim, or a contradiction.
-  The reader should feel the section start, not be told it is starting.
+- Never open a section by announcing what it covers. Start mid-argument — a fact, scene, claim, or contradiction.
 
 ═══════════════════════════════════════
-FORWARD-ONLY RULE — NO REPETITION
+FORWARD-ONLY — NO REPETITION
 ═══════════════════════════════════════
 
-This is the most important structural rule. Read it before writing each section.
-
-THE RULE: Every section must move the story forward. It must introduce something
-the reader does not yet know — a new fact, a new angle, a new layer of the argument.
-Once something has been explained, it is done. The next section builds on top of it.
-
-HOW TO CHECK BEFORE WRITING EACH SECTION:
-Ask yourself: "What does this section introduce that no previous section has introduced?"
-If the answer is "nothing new — I'm explaining the same match/event/point again" — stop.
-Either deepen the existing idea (go one layer further) or move to the next idea entirely.
-
-THE THREE VIOLATIONS — these will make the blog feel repetitive:
-
-VIOLATION 1 — SAME MATCH, SAME POINT:
-You already used Adelaide 141 to show X. Now you're using Adelaide 141 to show X again.
-FIX: Either develop X further (what does X reveal that you haven't said yet?) or drop it.
-
-VIOLATION 2 — SAME CONCLUSION, DIFFERENT WORDS:
-"His innings showed his quality under pressure." (Section 1)
-"These knocks reveal his ability to perform when it matters most." (Section 3)
-Both sentences say the same thing. One of them must go.
-FIX: The second mention must add a specific new dimension — not restate the first.
-
-VIOLATION 3 — SAME FACT, NEW SECTION:
-Kohli scored 141 at Adelaide. You mentioned this in Section 1.
-Section 3 opens with "In Adelaide, Kohli scored 141..."
-FIX: If you need to reference it again, do it in one clause — then immediately say something
-new about it. Never re-explain a fact that has already been established.
-
-THE FORWARD TEST — run this after writing each section:
-"If a reader skipped the previous section and read only this one,
-would they learn something new — or just get the same information again?"
-If the answer is "same information" — rewrite before moving on.
-
-ONE MATCH = ONE SECTION:
-Each major match or innings should be the primary focus of ONE section only.
-After that section, the match becomes background — a brief reference, never a re-explanation.
+Every section introduces something new. Once a match or idea is used — it's done.
+ONE MATCH = ONE SECTION. After that, one-clause reference only. Never re-explain.
+Before writing each section ask: "What does this introduce that nothing before it has?"
+If the answer is nothing new — deepen the existing idea or move on entirely.
 
 ═══════════════════════════════════════
 FACT RULES — CLAIM-FIRST WRITING
@@ -1435,62 +1336,25 @@ FACT RULES — CLAIM-FIRST WRITING
 
 {registry_section}
 
-BLACKLISTED FROM MEMORY — these claim types CANNOT be written from your training data.
-They can ONLY appear if a CLAIM-ID exists for them in the registry above:
-  ✗ Specific match scores      ("Dhoni scored 91", "India needed 130 to win")
-  ✗ Specific match results     ("won by 5 runs", "lost by 3 wickets")
-  ✗ Over-by-over outcomes      ("19-run over", "bowled a 2-run over")
-  ✗ Attributed direct quotes   ('Dhoni said "I always stay calm"')
-  ✗ Named event + scoreline    ("In the 2013 CT final, India needed 130...")
-
-If no CLAIM-ID exists for a specific detail — describe the PATTERN instead:
-  WRONG: "In the 2013 Champions Trophy final, India needed 130 to win and Dhoni scored 91"
-  RIGHT: "In that high-pressure final, Dhoni constructed his innings with the patience of someone who had already decided the outcome"
-
-  WRONG: 'Warner described facing Bumrah as "standing on a tightrope"'
-  RIGHT: "Warner's footwork against Bumrah tells its own story — never fully committed, always recalculating"
-
-  WRONG: "his average in chases is 65.3"  (no CLAIM-ID)
-  RIGHT: "his average in chases is notably higher than his overall career average"  (pattern)
-
-RULE: If a stat IS in the registry — use it confidently, cite CLAIM-ID in parentheses.
-RULE: If a stat is NOT in the registry — no number. The analytical point still stands without it.
+BLACKLISTED — only write these if a CLAIM-ID exists above:
+  ✗ Specific scores, results, over outcomes, direct quotes, named event + scoreline
+If no CLAIM-ID — describe the pattern, not the specific instance.
+If a stat IS in the registry — use it and cite (CLAIM-ID) inline.
 
 ═══════════════════════════════════════
-THE SCENE-FIRST RULE
+SCENE-FIRST RULE
 ═══════════════════════════════════════
 
-Before explaining the significance of any important moment — show the moment.
-
-The reader needs to be IN the situation before you tell them what it means.
-Every important innings, match, decision, or event must pass this test:
-
-THE FOUR QUESTIONS (answer all four before explaining significance):
-1. What was the match situation? (score, overs left, wickets down, target)
-2. What made it difficult? (opposition, conditions, pressure, what had just happened)
-3. What was the person trying to do? (survive, attack, rotate strike, win from nowhere)
-4. How did it feel as it unfolded? (the tension, the turning point, the moment it became memorable)
-
-WRONG (skips the moment, jumps to significance):
-"His innings at Edgbaston highlighted his ability to perform under pressure against
-a strong English attack. The knock was remarkable given the circumstances."
-
-RIGHT (puts the reader in the situation first):
-"India were chasing. Anderson had already taken two. The pitch had movement.
-Kohli came in at a moment when most batsmen would have played for survival —
-and instead he played every ball on its merit, never defensive, never reckless.
-He scored 149. It still wasn't enough. England won by 31 runs.
-That's the innings. The question is why it matters more than half his centuries that ended in victory."
-
-Apply this to every match, game, event, or moment you reference.
-Don't explain it. First make the reader feel it. Then explain it.
+Before explaining any important moment — show it.
+Answer these before explaining significance: What was the situation? What made it hard?
+What was the person trying to do? How did it feel?
+Don't explain it. Make the reader feel it first. Then explain it.
 
 ═══════════════════════════════════════
 THE ONE TEST
 ═══════════════════════════════════════
 
-Before writing each section ask: would a passionate fan of this topic learn something, feel something, or see something differently after reading this?
-
+Before writing each section: would a passionate reader learn something, feel something, or see something differently?
 If no — rewrite until yes.
 
 Write the full blog now. {"Start with the hook above." if hook else "Start with a scene, tension, uncomfortable truth, or question. Not the topic name. Not a definition. Not 'Introduction'."}

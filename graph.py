@@ -608,6 +608,56 @@ def node_extras(state: BlogState) -> dict[str, object]:
     return {"extras": generate_extras(state["final_blog"], state["topic"], state.get("facts", ""))}
 
 @_guarded
+def node_final_cleanup(state: BlogState) -> BlogState:
+    """
+    Final Cleanup — runs LAST, after citations and extras.
+    Strips any CLAIM-XXX labels or internal markers that survived or were
+    re-injected by the citations LLM. This is the guaranteed clean pass.
+    """
+    import re as _re
+    import logging as _logging
+    _log = _logging.getLogger("blog_agent")
+
+    blog = state.get("final_blog", "")
+    if not blog:
+        return state
+
+    before = blog
+
+    # Pass 1 — bracketed groups: (CLAIM-001) (CLAIM-001; CLAIM-002) [CLAIM-001]
+    blog = _re.sub(
+        r'[\(\[]\s*CLAIM-\d{3}(?:\s*[;,]\s*CLAIM-\d{3})*\s*[\)\]]',
+        '',
+        blog,
+        flags=_re.IGNORECASE
+    )
+    # Pass 2 — any bare CLAIM-XXX token remaining
+    blog = _re.sub(r'\bCLAIM-\d{3}\b', '', blog, flags=_re.IGNORECASE)
+
+    # Pass 3 — REASON: / **REASON:** prefix on any line
+    blog = _re.sub(
+        r'^\*{0,2}REASON\s*:?\*{0,2}\s*',
+        '',
+        blog,
+        flags=_re.IGNORECASE | _re.MULTILINE
+    )
+
+    # Cleanup artifacts left by stripping
+    blog = _re.sub(r'\(\s*\)', '', blog)
+    blog = _re.sub(r'\[\s*\]', '', blog)
+    blog = _re.sub(r'  +', ' ', blog)
+    blog = _re.sub(r' +([.,;:!?])', r'\1', blog)
+    blog = _re.sub(r'\n{3,}', '\n\n', blog)
+    blog = blog.strip()
+
+    if blog != before:
+        _log.info("[FINAL_CLEANUP] Stripped residual internal labels from final_blog")
+
+    state["final_blog"] = blog
+    return state
+
+
+@_guarded
 def node_save_memory(state: BlogState) -> BlogState:
     store_memory(state["topic"])
     store_memory(state["final_blog"])
@@ -667,11 +717,11 @@ def build_graph():
     g.add_node("retrieve_memory",        node_retrieve_memory)
     g.add_node("insights",               node_insights)
     g.add_node("hook",                   node_hook)
-    g.add_node("narrative_architect",    node_narrative_architect)   # Elite — story shape
+    g.add_node("narrative_architect",    node_narrative_architect)
     g.add_node("write",                  node_write)
     g.add_node("audit_facts",            node_audit_facts)
-    g.add_node("forbidden_filter",       node_forbidden_filter)   # Phase 2 — NEW
-    g.add_node("grounding_score",        node_grounding_score)    # Phase 3 — NEW
+    g.add_node("forbidden_filter",       node_forbidden_filter)
+    g.add_node("grounding_score",        node_grounding_score)
     g.add_node("ending",                 node_ending)
     g.add_node("critic",                 node_critique_rewrite)
     g.add_node("targeted_revision",      node_targeted_revision)
@@ -680,6 +730,7 @@ def build_graph():
     g.add_node("fix_cliches",            node_fix_cliches)
     g.add_node("citations",              node_citations)
     g.add_node("extras",                 node_extras)
+    g.add_node("final_cleanup",          node_final_cleanup)  # Last pass — strips any remaining internal labels
     g.add_node("save_memory",            node_save_memory)
 
     g.set_entry_point("planner")
@@ -726,7 +777,8 @@ def build_graph():
     g.add_edge("score",            "fix_cliches")
     g.add_edge("fix_cliches",      "citations")
     g.add_edge("fix_cliches",      "extras")
-    g.add_edge(["citations", "extras"], "save_memory")
+    g.add_edge(["citations", "extras"], "final_cleanup")
+    g.add_edge("final_cleanup",    "save_memory")
     g.add_edge("save_memory",      END)
 
     return g.compile()

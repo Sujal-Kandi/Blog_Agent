@@ -331,6 +331,88 @@ def node_write(state: BlogState) -> BlogState:
     return state
 
 @_guarded
+def node_sentence_integrity(state: BlogState) -> BlogState:
+    """
+    Sentence Integrity Scanner — pure Python regex, zero LLM cost.
+    Runs between write and audit_facts.
+
+    Catches three artifact classes that the story critic misses:
+    1. Dangling sentence starters — "When the", "And the", "But the" with no continuation
+    2. Orphaned fragments — paragraphs under 4 words that aren't stylistic
+    3. Incomplete clause endings — paragraph ends mid-thought (comma, dash, or conjunction)
+
+    Fixes are surgical: strip the broken line or merge with the next paragraph.
+    Does NOT touch clean prose.
+    """
+    import re as _re
+    import logging as _logging
+    _log = _logging.getLogger("blog_agent")
+
+    blog = state.get("final_blog", "")
+    if not blog or not blog.strip():
+        return state
+
+    paragraphs = blog.split("\n\n")
+    cleaned = []
+    fixes = 0
+
+    # Patterns that signal a broken/incomplete sentence
+    DANGLING_STARTERS = _re.compile(
+        r'^(When the|And the|But the|So the|For the|With the|If the)\s*$',
+        _re.IGNORECASE
+    )
+    INCOMPLETE_ENDING = _re.compile(
+        r'[,\-–—]$|,\s*$|\b(and|but|or|yet|so|because|that|which|who|when|if)\s*$',
+        _re.IGNORECASE
+    )
+    SECTION_HEADING = _re.compile(r'^#{1,3}\s+')
+
+    for i, para in enumerate(paragraphs):
+        stripped = para.strip()
+
+        # Skip headings and empty
+        if not stripped or SECTION_HEADING.match(stripped):
+            cleaned.append(para)
+            continue
+
+        # Check 1: dangling starter — merge with next paragraph if possible
+        if DANGLING_STARTERS.match(stripped):
+            if i + 1 < len(paragraphs):
+                paragraphs[i + 1] = stripped + " " + paragraphs[i + 1].strip()
+                fixes += 1
+                _log.info(f"[INTEGRITY] Merged dangling starter: '{stripped[:40]}'")
+            # Either way, don't add this fragment alone
+            continue
+
+        # Check 2: very short paragraph (under 4 words) that isn't a stylistic fragment
+        # Stylistic fragments are allowed if they end with a period or are all caps
+        words = stripped.split()
+        if len(words) < 4 and not stripped.endswith('.') and not stripped.isupper():
+            if i + 1 < len(paragraphs) and not SECTION_HEADING.match(paragraphs[i + 1].strip()):
+                paragraphs[i + 1] = stripped + " " + paragraphs[i + 1].strip()
+                fixes += 1
+                _log.info(f"[INTEGRITY] Merged short fragment: '{stripped[:40]}'")
+                continue
+
+        # Check 3: paragraph ending mid-clause
+        if INCOMPLETE_ENDING.search(stripped):
+            if i + 1 < len(paragraphs) and not SECTION_HEADING.match(paragraphs[i + 1].strip()):
+                paragraphs[i + 1] = stripped.rstrip(',—–-') + " " + paragraphs[i + 1].strip()
+                fixes += 1
+                _log.info(f"[INTEGRITY] Merged incomplete ending: '{stripped[-40:]}'")
+                continue
+
+        cleaned.append(para)
+
+    if fixes > 0:
+        result = "\n\n".join(cleaned)
+        _log.info(f"[INTEGRITY] Fixed {fixes} sentence artifact(s)")
+        return {**state, "final_blog": result}
+
+    return state
+
+
+@_guarded
 def node_audit_facts(state: BlogState) -> BlogState:
     """
     Strips hallucinated numbers — runs right after write, before critique.
@@ -726,6 +808,7 @@ def build_graph():
     g.add_node("hook",                   node_hook)
     g.add_node("narrative_architect",    node_narrative_architect)
     g.add_node("write",                  node_write)
+    g.add_node("sentence_integrity",     node_sentence_integrity)
     g.add_node("audit_facts",            node_audit_facts)
     g.add_node("forbidden_filter",       node_forbidden_filter)
     g.add_node("grounding_score",        node_grounding_score)
@@ -763,7 +846,8 @@ def build_graph():
     # Hook complete → Write (writer has hook + narrative blueprint)
     g.add_edge("hook", "write")
 
-    g.add_edge("write",            "audit_facts")
+    g.add_edge("write",             "sentence_integrity")
+    g.add_edge("sentence_integrity", "audit_facts")
     # After audit: forbidden filter blocks ungrounded specific claims (Phase 2)
     g.add_edge("audit_facts",      "forbidden_filter")
     # After filter: grounding score rewrites low-scoring sections (Phase 3)

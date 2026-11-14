@@ -1448,6 +1448,9 @@ BLACKLISTED — only write these if a CLAIM-ID exists above:
 If no CLAIM-ID — describe the pattern, not the specific instance.
 If a stat IS in the registry — use it and cite (CLAIM-ID) inline.
 
+CITATION VOICE RULE:
+Embed sources minimally — "one analyst noted" or "research found." Never paste a full name + institutional credential mid-sentence. The fact matters. The CV doesn't.
+
 ═══════════════════════════════════════
 SCENE-FIRST RULE
 ═══════════════════════════════════════
@@ -1824,12 +1827,18 @@ Examples: "In this section, we'll explore...", "To understand X, we need to firs
 "Now that we've covered X, let's turn to Y."
 Quote each offending opening.
 
+PATTERN E — OBSERVER PROSE:
+Find any section where the writer describes what happens rather than placing the reader inside it.
+The reader should be IN the experience — not watching from outside.
+Signs: passive scene-setting, "he did X", "the team did Y", conditions described from a distance.
+Quote the opening sentence of any section where the reader is observing instead of living it.
+
 For each pattern found:
 - Quote the offending text
 - Write ONE rewritten version that fixes it
 
 Overall answer: NATURAL / ROBOTIC
-(ROBOTIC if any pattern found in 2+ sections. NATURAL only if the blog is clean across all four.)
+(ROBOTIC if any pattern found in 2+ sections. NATURAL only if the blog is clean across all five.)
 
 ─────────────────────────────────────────
 Q5 — DOES THE ENDING DELIVER SOMETHING NEW?

@@ -530,6 +530,14 @@ Topic: {topic}
 Target Audience: {audience}
 Audience Note: Write for this specific audience — calibrate depth, tone, and assumed knowledge accordingly.
 
+STEP 0 — READER EMOTIONAL STATE
+Arrival Emotion: One word. What emotion does this reader carry in before reading? (e.g. anxiety, skepticism, nostalgia, curiosity)
+Departure Feeling: One sentence. What should they FEEL when they close the tab — not what they know, what they feel.
+Visualization Depth: SCENE | SENTENCE | STAT
+  SCENE = full immersive scene, character + moment + sensory detail (incidents, sports, personal failure)
+  SENTENCE = one precise sentence naming a feeling the reader has never seen written (opinion, analytical, life)
+  STAT = one number so surprising it creates instant curiosity (science, business, historical)
+
 STEP 1 — TOPIC INTELLIGENCE
 Topic Type: (one of) Technical | Sports | Educational | Historical | Analytical | Review | Opinion | Science | Health | Business
 Core Question: The single most important question this blog must answer.
@@ -1000,6 +1008,13 @@ Each sentence should:
 The first sentence must grab. The last sentence must land.
 Everything in between must pull.
 
+STORY ANCHOR (one line, after the spine paragraph):
+Name the single concrete scene or character the writer opens with and must return to in at least 3 chapters.
+Not a theme — a specific moment. A person in a place with a problem.
+Format: STORY ANCHOR: [person/character] + [specific situation] + [what's at stake]
+Example: STORY ANCHOR: A fintech engineer, 2am, watching a compliance bot answer questions using retired policy rules.
+The writer uses this as the thread the whole blog hangs on.
+
 ═══════════════════════════════════════
 PART 3 — THE CONTRACT
 ═══════════════════════════════════════
@@ -1072,6 +1087,32 @@ def write_blog(topic: str, audience: str, plan: str, research_data: str, memory:
         "Orwell — clarity and concrete language"
     ))
     primary, secondary, light = weights
+
+    # Visualization rule — domain-aware, one before/after pair, token-efficient.
+    # The rule is the same for every domain: don't describe, put the reader inside.
+    # The example changes per domain so it lands concretely for this topic type.
+    _VIZ_EXAMPLES = {
+        "technical":   ("OBSERVED (banned): 'The deploy failed and latency spiked.'\nVISUALIZED: 'It's 2am. You pushed four hours ago. Your phone won't stop. The bot is answering with rules retired in March.'"),
+        "sports":      ("OBSERVED (banned): 'He faced a difficult final over under pressure.'\nVISUALIZED: 'Six needed. Last ball. His hands aren't shaking — that's the thing nobody in the stands understands.'"),
+        "business":    ("OBSERVED (banned): 'The startup made a pricing mistake that hurt growth.'\nVISUALIZED: 'The spreadsheet looked right. The first churn email arrived eleven days after launch.'"),
+        "health":      ("OBSERVED (banned): 'Many people struggle with sleep deprivation.'\nVISUALIZED: 'You know you need eight hours. You also know exactly how 11pm becomes 1am.'"),
+        "analytical":  ("OBSERVED (banned): 'The data revealed an unexpected pattern.'\nVISUALIZED: 'The number sat in the report for six months. Nobody asked why it was wrong.'"),
+        "opinion":     ("OBSERVED (banned): 'Many people believe remote work is productive.'\nVISUALIZED: 'Your best thinking happened at 6am before anyone else logged on. That is the data.'"),
+        "science":     ("OBSERVED (banned): 'Studies show exercise improves cognition.'\nVISUALIZED: 'Twenty minutes in, the problem you have been staring at for two hours solves itself.'"),
+        "historical":  ("OBSERVED (banned): 'The decision had significant consequences.'\nVISUALIZED: 'The telegram arrived at noon. By evening three countries had changed their position.'"),
+        "educational": ("OBSERVED (banned): 'Compound interest grows wealth over time.'\nVISUALIZED: 'The account you opened at 22 and forgot about — that is the one doing the most work.'"),
+    }
+    viz_example = _VIZ_EXAMPLES.get(topic_type, (
+        "OBSERVED (banned): 'The situation was difficult and had real consequences.'\n"
+        "VISUALIZED: 'Name the person. Name the moment. Name what was at stake. Put the reader there.'"
+    ))
+    visualization_rule = f"""Don't describe what happens. Put the reader inside it.
+The reader is not watching a scene — they are living it.
+
+{viz_example}
+
+Rule: Every scene-setting sentence must pass this test — is the reader IN this, or watching it?
+If watching: rewrite until they're in."""
 
     # Voice profile per topic type.
     # These are not job descriptions — they are writing postures.
@@ -1240,20 +1281,19 @@ Don't just mention all three and move on — choose one as the central argument 
             # Fallback: no PART markers found — send full narrative up to 5,000 chars
             narrative_body = narrative[:5_000]
 
+        # Extract STORY ANCHOR — the concrete thread the writer must return to
+        anchor_match = _re2.search(r'STORY ANCHOR:\s*([^\n]+)', narrative, _re2.IGNORECASE)
+        anchor_line = f"\nSTORY ANCHOR — return to this in every chapter: {anchor_match.group(1).strip()}\n" if anchor_match else ""
+
         narrative_section = f"""
 ═══════════════════════════════════════
 THE STORY YOU ARE TELLING
 ═══════════════════════════════════════
-Before you write a single word, read this. This is the story.
-Not a structure to follow. Not beats to check off.
-The arc, the shift, the thing the reader should feel by the end.
-
+{anchor_line}
 {narrative_body}
 
-Keep this in mind the entire time you write.
 Every paragraph either moves this story forward or it doesn't belong.
-The sections are not containers for information.
-They are moments in a continuous journey.
+Sections are moments in a continuous journey — not containers for information.
 If the reader could skip a section and not feel the loss — rewrite it.
 """
 
@@ -1322,6 +1362,11 @@ A blog is NOT:
 - A list of facts with headers
 - Five paragraphs that all do the same thing
 - A report that describes what experts say without having an opinion
+
+═══════════════════════════════════════
+VISUALIZATION RULE
+═══════════════════════════════════════
+{visualization_rule}
 
 ═══════════════════════════════════════
 ADAPTIVE MECHANICS: {topic_type.upper()}
@@ -1707,6 +1752,10 @@ NARRATIVE BLUEPRINT (what the blog was supposed to do):
 Check whether the writer actually executed each beat's JOB.
 """
 
+    # Pre-compute blog slice — avoids backslash-in-f-string on Python 3.10
+    _ELLIPSIS = "\n...\n"
+    _blog_for_critic = blog if len(blog) < 8_000 else blog[:5_500] + _ELLIPSIS + blog[-1_500:]
+
     prompt = f"""
 You are a story critic — not a proofreader. You diagnose where the reader's journey broke down.
 
@@ -1847,7 +1896,7 @@ Pass: YES or NO
 Priority Fix: (the single change that would most elevate this blog — be specific, one sentence)
 
 Blog:
-{blog if len(blog) < 8_000 else blog[:5_500] + "\n...\n" + blog[-1_500:]}
+{_blog_for_critic}
 """
     result = _invoke(prompt, temperature=0.2)
     logger.info(f"[CRITIC] Done | blog_chars={len(blog)} | truncated={'yes' if len(blog) >= 8_000 else 'no'} | duration={time.time()-start:.1f}s")

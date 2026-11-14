@@ -142,7 +142,7 @@ def node_narrative_architect(state: BlogState) -> dict:
     LLM reasons from first principles: what does this reader believe,
     what will surprise them, what emotional journey serves this topic.
     Outputs a beat-by-beat outline the writer follows as a contract.
-    Runs after insights+hook, before write.
+    Runs after insights, before hook + write.
     """
     result = narrative_architect(
         topic=state["topic"],
@@ -159,13 +159,17 @@ def node_hook(state: BlogState) -> dict:
     """
     Opening Hook Generator — produces 5 candidate opening sentences, picks sharpest.
     The opening is the hardest sentence to write and the most important.
-    Runs in parallel with node_insights after memory retrieval.
+    Now runs AFTER the Narrative Architect so the hook is the first beat of the
+    story arc — not a standalone grabber that may drift from the blueprint.
+    Passes the narrative to generate_opening_hook so it can align with the
+    story spine and emotional arc before committing to a first sentence.
     """
     result = generate_opening_hook(
         state["topic"],
         state.get("insights", ""),
         state["plan"],
         state["audience"],
+        state.get("narrative", ""),
     )
     return {"hook": result}
 
@@ -174,8 +178,10 @@ def node_hook(state: BlogState) -> dict:
 def node_ending(state: BlogState) -> dict:
     """
     Ending Generator — generates 3 candidate endings after the draft exists.
-    Replaces the writer's generic closing with a sharp, earned final paragraph.
-    Runs after audit_facts, before citations.
+    Appends a sharp closing paragraph AFTER the existing last section rather
+    than replacing it. This preserves the last section's body content while
+    still landing a strong close.
+    Runs after grounding_score, before critic.
     """
     import re as _re
     import logging as _logging
@@ -188,41 +194,42 @@ def node_ending(state: BlogState) -> dict:
         _log.warning("[ENDING] Empty result — keeping original ending")
         return {"final_blog": draft}
 
-    # Hard safety: strip any label artifacts that leaked through
-    # These patterns should NEVER appear in the final blog
+    # Strip any label artifacts that leaked through
     label_pattern = _re.compile(
         r'^(ENDING\s+[A-C]|CHOSEN ENDING|FINAL TEXT|OPTION\s+[A-C]|---CHOSEN---|REFRAME:|CHALLENGE:|HARD TRUTH:).*$',
         _re.IGNORECASE | _re.MULTILINE
     )
     ending_clean = label_pattern.sub("", ending).strip()
-    # Collapse multiple blank lines left by stripping
     ending_clean = _re.sub(r'\n{3,}', '\n\n', ending_clean).strip()
 
     if not ending_clean:
         _log.warning("[ENDING] Ending was all labels after stripping — keeping original")
         return {"final_blog": draft}
 
-    # Strategy: find the last ### section heading and replace everything after it
-    # with the new ending. If no headings, replace last 2 paragraphs.
-    headings = list(_re.finditer(r'^###\s+.+', draft, _re.MULTILINE))
-    if headings:
-        last_heading = headings[-1]
-        before_last_section = draft[:last_heading.start()]
-        last_heading_text = last_heading.group(0)
-        new_final_blog = before_last_section + last_heading_text + "\n\n" + ending_clean
-    else:
-        paragraphs = [p.strip() for p in draft.split("\n\n") if p.strip()]
-        if len(paragraphs) > 2:
-            new_final_blog = "\n\n".join(paragraphs[:-2]) + "\n\n" + ending_clean
-        else:
-            new_final_blog = draft
+    # Strategy: APPEND the ending after the full existing blog.
+    # We do NOT replace the last section — that section's body content is preserved.
+    # The ending becomes a final unlabelled closing paragraph after all sections,
+    # so the blog retains its full analytical content and still lands a sharp close.
+    #
+    # To avoid a double-ending (the last section may already close well), we first
+    # strip the last 1–2 sentences of the draft IF they look like a generic summary
+    # close (e.g. "In conclusion...", "Ultimately...", "Together these...").
+    summary_closers = _re.compile(
+        r'(In conclusion[^.]*\.|Ultimately[^.]*\.|Together[^.]*\.|'
+        r'In summary[^.]*\.|To summarize[^.]*\.|'
+        r'At the end of the day[^.]*\.)\s*$',
+        _re.IGNORECASE
+    )
+    draft_trimmed = summary_closers.sub("", draft).rstrip()
 
-    # Safety: don't shrink the blog more than 15%
-    if len(new_final_blog.split()) < len(draft.split()) * 0.85:
-        _log.warning("[ENDING] Replacement too short — keeping original")
+    new_final_blog = draft_trimmed + "\n\n" + ending_clean
+
+    # Safety: appending should never shrink the blog — if it somehow did, revert.
+    if len(new_final_blog.split()) < len(draft.split()):
+        _log.warning("[ENDING] Appended blog shorter than original — keeping original")
         return {"final_blog": draft}
 
-    _log.info(f"[ENDING] Ending replaced successfully")
+    _log.info(f"[ENDING] Ending appended successfully | added_words={len(ending_clean.split())}")
     return {"final_blog": new_final_blog}
 
 
@@ -741,15 +748,20 @@ def build_graph():
     g.add_edge("research",         "extract_facts")
     g.add_edge("extract_facts",    "retrieve_memory")
 
-    # After memory: insights + hook run IN PARALLEL
+    # After memory: insights runs first (narrative architect needs it)
     g.add_edge("retrieve_memory",  "insights")
-    g.add_edge("retrieve_memory",  "hook")
 
-    # Both complete → Narrative Architect designs the story shape
-    g.add_edge(["insights", "hook"], "narrative_architect")
+    # Insights complete → Narrative Architect designs the story shape
+    g.add_edge("insights", "narrative_architect")
 
-    # Narrative Architect → Write (writer follows the beat outline)
-    g.add_edge("narrative_architect", "write")
+    # Narrative Architect complete → Hook generator runs with the full story blueprint
+    # Hook now knows the arc, the spine, and the emotional contract before writing
+    # the first sentence — so the opening is the first beat of the story, not a
+    # standalone attention-grabber that may drift from the arc.
+    g.add_edge("narrative_architect", "hook")
+
+    # Hook complete → Write (writer has hook + narrative blueprint)
+    g.add_edge("hook", "write")
 
     g.add_edge("write",            "audit_facts")
     # After audit: forbidden filter blocks ungrounded specific claims (Phase 2)

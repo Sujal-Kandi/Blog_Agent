@@ -720,7 +720,7 @@ Be specific. Be bold. Generic insights are useless.
 
 
 @traceable(name="opening_hook_generator")
-def generate_opening_hook(topic: str, insights: str, plan: str, audience: str) -> str:
+def generate_opening_hook(topic: str, insights: str, plan: str, audience: str, narrative: str = "") -> str:
     """
     Opening Hook Generator — one dedicated LLM call, one job.
 
@@ -728,13 +728,39 @@ def generate_opening_hook(topic: str, insights: str, plan: str, audience: str) -
     The opening is the hardest sentence to write and the most important.
     When buried inside a 2000-word prompt the LLM rushes it.
     A dedicated call with a single focus produces a genuinely sharp first sentence.
+
+    Now receives the Narrative Architect output so the hook is the first sentence
+    of the actual story — not a standalone attention-grabber that may drift from
+    the arc the architect designed.
     """
     _check_cancelled()
     logger.info(f"[HOOK] Generating opening hook | topic='{topic[:60]}'")
     start = time.time()
 
-    plan_input     = plan[:1_000]    if plan     else ""
-    insights_input = insights[:1_000] if insights else ""
+    plan_input      = plan[:1_000]     if plan      else ""
+    insights_input  = insights[:1_000] if insights  else ""
+
+    # Extract the story spine paragraph and emotional arc from the narrative —
+    # these are the parts the hook needs to align with, not the full blueprint.
+    narrative_input = ""
+    if narrative and narrative.strip():
+        import re as _re
+        # Try to extract PART 2 (story spine) — a single prose paragraph
+        spine_match = _re.search(
+            r'PART\s+2[^\n]*\n+(.*?)(?=PART\s+3|CORE\s+THESIS|WHAT\s+MUST\s+NOT|$)',
+            narrative, _re.IGNORECASE | _re.DOTALL
+        )
+        arc_match = _re.search(
+            r'EMOTIONAL\s+ARC[^\n]*:\s*([^\n]+)', narrative, _re.IGNORECASE
+        )
+        spine_text = spine_match.group(1).strip()[:600] if spine_match else ""
+        arc_text   = arc_match.group(1).strip()         if arc_match   else ""
+        if spine_text or arc_text:
+            narrative_input = (
+                "\nNARRATIVE ALIGNMENT — the hook must be the first beat of this story:\n"
+                + (f"Story spine opening: {spine_text}\n" if spine_text else "")
+                + (f"Emotional arc: {arc_text}\n"         if arc_text   else "")
+            )
 
     prompt = f"""
 You are writing the opening sentence of a blog about: "{topic}"
@@ -745,6 +771,7 @@ CORE INSIGHTS TO DRAW FROM:
 
 STRATEGY BRIEF:
 {plan_input}
+{narrative_input}
 
 Generate 5 completely different candidate opening sentences.
 Each must be a different TYPE:
@@ -1180,9 +1207,39 @@ One of these should be the spine of the whole blog. Pick the one that fits best 
 Don't just mention all three and move on — choose one as the central argument and let the others support it.
 """
 
-    # Narrative Architect spine — the felt story the writer carries while writing
+    # Narrative Architect spine — the felt story the writer carries while writing.
+    # We pass PART 2 (story spine) and PART 3 (contract) in full — these are the
+    # sections the writer needs most. PART 1 (reader belief analysis) is included
+    # only if budget allows. Total cap raised to 5,000 chars so the full blueprint
+    # reaches the writer even for long blogs.
     narrative_section = ""
     if narrative and narrative.strip():
+        import re as _re2
+
+        # Try to extract PART 2 and PART 3 specifically — highest value for the writer
+        part2_match = _re2.search(
+            r'(PART\s+2[^\n]*\n+.*?)(?=PART\s+3|$)',
+            narrative, _re2.IGNORECASE | _re2.DOTALL
+        )
+        part3_match = _re2.search(
+            r'(PART\s+3[^\n]*\n+.*?)$',
+            narrative, _re2.IGNORECASE | _re2.DOTALL
+        )
+        part2_text = part2_match.group(1).strip() if part2_match else ""
+        part3_text = part3_match.group(1).strip() if part3_match else ""
+
+        if part2_text or part3_text:
+            # Compose from extracted sections with generous individual caps
+            narrative_body = ""
+            if part2_text:
+                narrative_body += part2_text[:2_500] + "\n\n"
+            if part3_text:
+                narrative_body += part3_text[:2_500]
+            narrative_body = narrative_body.strip()
+        else:
+            # Fallback: no PART markers found — send full narrative up to 5,000 chars
+            narrative_body = narrative[:5_000]
+
         narrative_section = f"""
 ═══════════════════════════════════════
 THE STORY YOU ARE TELLING
@@ -1191,7 +1248,7 @@ Before you write a single word, read this. This is the story.
 Not a structure to follow. Not beats to check off.
 The arc, the shift, the thing the reader should feel by the end.
 
-{narrative[:3_000]}
+{narrative_body}
 
 Keep this in mind the entire time you write.
 Every paragraph either moves this story forward or it doesn't belong.
@@ -1790,10 +1847,10 @@ Pass: YES or NO
 Priority Fix: (the single change that would most elevate this blog — be specific, one sentence)
 
 Blog:
-{blog[:5_500]}
+{blog if len(blog) < 8_000 else blog[:5_500] + "\n...\n" + blog[-1_500:]}
 """
     result = _invoke(prompt, temperature=0.2)
-    logger.info(f"[CRITIC] Done | duration={time.time()-start:.1f}s")
+    logger.info(f"[CRITIC] Done | blog_chars={len(blog)} | truncated={'yes' if len(blog) >= 8_000 else 'no'} | duration={time.time()-start:.1f}s")
     return result
 
 

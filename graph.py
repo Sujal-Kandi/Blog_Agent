@@ -16,7 +16,6 @@ from agent import (
     plan_blog,
     research,
     analyze_competitor_gap,
-    extract_facts,
     extract_insights,
     narrative_architect,
     generate_opening_hook,
@@ -108,12 +107,6 @@ def node_research(state: BlogState) -> dict:
 @_guarded
 def node_competitor_gap(state: BlogState) -> dict:
     return {"gap": analyze_competitor_gap(state["topic"])}
-
-@_guarded
-def node_extract_facts(state: BlogState) -> BlogState:
-    # facts are already built by the research engine — this is a no-op pass-through
-    state["facts"] = extract_facts(state["topic"], state["facts"])
-    return state
 
 @_guarded
 def node_retrieve_memory(state: BlogState) -> BlogState:
@@ -385,9 +378,9 @@ def node_sentence_integrity(state: BlogState) -> BlogState:
             continue
 
         # Check 2: very short paragraph (under 4 words) that isn't a stylistic fragment
-        # Stylistic fragments are allowed if they end with a period or are all caps
+        # Stylistic fragments are allowed if they end with sentence-ending punctuation
         words = stripped.split()
-        if len(words) < 4 and not stripped.endswith('.') and not stripped.isupper():
+        if len(words) < 4 and not stripped[-1] in '.?!' and not stripped.isupper():
             if i + 1 < len(paragraphs) and not SECTION_HEADING.match(paragraphs[i + 1].strip()):
                 paragraphs[i + 1] = stripped + " " + paragraphs[i + 1].strip()
                 fixes += 1
@@ -802,7 +795,6 @@ def build_graph():
     g.add_node("planner",               node_plan)
     g.add_node("competitor_gap",         node_competitor_gap)
     g.add_node("research",               node_research)
-    g.add_node("extract_facts",          node_extract_facts)
     g.add_node("retrieve_memory",        node_retrieve_memory)
     g.add_node("insights",               node_insights)
     g.add_node("hook",                   node_hook)
@@ -825,11 +817,10 @@ def build_graph():
 
     g.set_entry_point("planner")
 
-    # Plan → gap → research → extract_facts → memory
+    # Plan → gap → research → memory
     g.add_edge("planner",          "competitor_gap")
     g.add_edge("competitor_gap",   "research")
-    g.add_edge("research",         "extract_facts")
-    g.add_edge("extract_facts",    "retrieve_memory")
+    g.add_edge("research",         "retrieve_memory")
 
     # After memory: insights runs first (narrative architect needs it)
     g.add_edge("retrieve_memory",  "insights")

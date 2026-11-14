@@ -195,8 +195,37 @@ LENGTH_GUIDE = {
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 2 — Forbidden Pattern Filter (pure Python, zero LLM, <0.05s)
+# SHARED WRITING RULES — defined once, injected into writer, ending, revision.
+# Any rule added here automatically applies to all three output nodes.
 # ═══════════════════════════════════════════════════════════════════════════════
+
+SHARED_WRITING_RULES = """
+UNIVERSAL WRITING RULES (apply to every sentence you write):
+
+1. NO DOUBLE-TAP: Write the insight once. Then move on.
+   If the sentence after your point restates the same idea in different words — delete it.
+   Trust the first sentence. The reader got it.
+
+2. NO THROAT-CLEARING: Delete any sentence that opens with:
+   "This shows...", "It is worth noting...", "As we can see...", "This means that...",
+   "What this tells us...", "This demonstrates...", "This reveals..."
+   These announce the paragraph's conclusion instead of earning it.
+
+3. NO SIGNIFICANCE ANNOUNCEMENTS: Delete sentences like:
+   "This is crucial", "This is key", "This is remarkable", "This is significant."
+   The paragraph before it should make the reader feel it — without being told.
+
+4. RHYTHM: Never three consecutive sentences at the same length.
+   Vary deliberately. Short sentences land. Use them.
+
+5. VISUALIZATION: Don't describe what happens. Put the reader inside it.
+   The reader is not watching a scene — they are living it.
+   Every scene-setting sentence must pass: is the reader IN this, or watching it?
+
+6. CITATION VOICE: Embed sources minimally.
+   Use "one analyst noted" or "research found" — never paste full name + credential mid-sentence.
+   The fact matters. The CV doesn't.
+"""
 
 # Patterns that are ABSOLUTELY FORBIDDEN unless backed by a registered CLAIM-ID.
 # Each entry: (compiled_regex, human_label, severity)
@@ -867,6 +896,8 @@ CORE INSIGHTS THE BLOG BUILT TOWARD:
 CURRENT ENDING (what exists — you are REPLACING this):
 {blog_tail}
 
+{SHARED_WRITING_RULES}
+
 Your job: write an ending that makes the reader feel the whole journey was worth it.
 
 THE ONE RULE THAT MATTERS:
@@ -1039,7 +1070,7 @@ e.g. "Write like a detective who already knows the answer but is walking the rea
 
 Be specific. This spine is what the writer feels while writing — not a checklist to execute.
 """
-    result = _invoke(prompt, temperature=0.4)
+    result = _invoke(prompt, temperature=0.25)
     logger.info(f"[ARCHITECT] Done | chars={len(result)} | duration={time.time()-start:.1f}s")
     return result
 
@@ -1916,6 +1947,28 @@ Pass: YES or NO
 (YES only if Q1=YES, Q2=SPINE, Q5=NEW, Q7=CLEAN, and at most one failure in Q3/Q4/Q6)
 Priority Fix: (the single change that would most elevate this blog — be specific, one sentence)
 
+─────────────────────────────────────────
+STRUCTURED_FAILURES
+─────────────────────────────────────────
+After completing all questions above, output this block EXACTLY.
+One line per failed check. Use NONE if everything passed for that question.
+This block is machine-read by the revision step — format must be exact.
+
+STRUCTURED_FAILURES_BEGIN
+Q1: PASS | FAIL — [if FAIL: paste the sharper opening you wrote above, one sentence]
+Q2: SPINE | STACKED — [if STACKED: name the exact section heading where thread breaks]
+Q3: PASS | FAIL — [if FAIL: name the exact section heading that plays it safe]
+Q4_A: NONE | [quote the first word of the offending sentence sequence]
+Q4_B: NONE | [quote the first 5 words of each throat-clearing opener, comma-separated]
+Q4_C: NONE | [quote the first 5 words of each significance announcement, comma-separated]
+Q4_D: NONE | [quote the first 5 words of each announcing section opener, comma-separated]
+Q4_E: NONE | [quote the first 5 words of each observer-prose section opener, comma-separated]
+Q4_F: NONE | [quote the first 5 words of the first double-tap pair]
+Q5: NEW | SUMMARY | CONTRADICTION — [if not NEW: one sentence of direction]
+Q7: CLEAN | REPETITIVE — [if REPETITIVE: section heading and fix direction, one line each]
+PRIORITY_FIX: [the single most important fix, one sentence, specific]
+STRUCTURED_FAILURES_END
+
 Blog:
 {_blog_for_critic}
 """
@@ -1929,10 +1982,25 @@ def targeted_revision(blog: str, critique: str, topic: str, audience: str) -> st
     """
     Targeted Revision — fixes ONLY the issues flagged by the Story Critic.
     Surgical. Does not rewrite sections that passed.
+    Reads STRUCTURED_FAILURES block from critique for precision — falls back
+    to full prose critique if the structured block is missing.
     """
     _check_cancelled()
     logger.info(f"[REVISION] Starting targeted revision | topic='{topic[:60]}'")
     start = time.time()
+
+    # Extract STRUCTURED_FAILURES block — machine-readable signal from critic
+    structured_failures = ""
+    if "STRUCTURED_FAILURES_BEGIN" in critique and "STRUCTURED_FAILURES_END" in critique:
+        sf_start = critique.index("STRUCTURED_FAILURES_BEGIN") + len("STRUCTURED_FAILURES_BEGIN")
+        sf_end   = critique.index("STRUCTURED_FAILURES_END")
+        structured_failures = critique[sf_start:sf_end].strip()
+        logger.info(f"[REVISION] Structured failures block extracted ({len(structured_failures)} chars)")
+    else:
+        logger.warning("[REVISION] No structured failures block found — falling back to full prose critique")
+
+    # Use structured block if available; full critique as fallback
+    critique_input = structured_failures if structured_failures else critique
 
     prompt = f"""
 You are a surgical editor. Fix only what the Story Critic flagged — nothing else.
@@ -1940,8 +2008,10 @@ You are a surgical editor. Fix only what the Story Critic flagged — nothing el
 Topic: {topic}
 Audience: {audience}
 
+{SHARED_WRITING_RULES}
+
 STORY CRITIC DIAGNOSIS:
-{critique}
+{critique_input}
 
 ═══════════════════════════════════════
 WHAT TO FIX
@@ -2233,12 +2303,14 @@ VERIFIED FACTS REFERENCE (TL;DR bullets must only use claims from here or genera
     prompt = f"""
 You are an editorial designer. Given this blog, generate three things:
 
-1. TL;DR — exactly 3 bullet points summarizing the most important takeaways. Each bullet is one sharp sentence.
-   RULE: Only include specific numbers or statistics if they appear in the VERIFIED FACTS REFERENCE below.
-   If a number is not verified, describe the insight without the number.
-   No fluff.
-2. Pull Quote — pick the single most powerful, quotable sentence from the blog. It should be something that makes a reader stop and think.
-3. Key Takeaway — one bold, specific sentence that captures the core message of the entire blog. Not a summary — a conclusion that lands.
+1. TL;DR — exactly 3 bullet points. Each bullet is one sharp sentence.
+   RULE 1: The first bullet must state the blog's core ARGUMENT — not a fact, the thesis. What is this blog actually claiming?
+   RULE 2: The second bullet must complicate or deepen that argument — the most surprising supporting point.
+   RULE 3: The third bullet must land the conclusion — what the reader should think or feel differently.
+   RULE 4: Only include specific numbers or statistics if they appear in the VERIFIED FACTS REFERENCE below. If a number is not verified, describe the insight without the number.
+   These bullets reflect the blog's argument — not just its facts.
+2. Pull Quote — pick the single most powerful, quotable sentence from the blog. Something that makes a reader stop and think.
+3. Key Takeaway — one bold, specific sentence capturing the core message. Not a summary — a conclusion that lands.
 
 Topic: {topic}
 {facts_ref}

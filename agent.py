@@ -1535,9 +1535,6 @@ ORWELL MECHANICS (use these concretely):
 - Every abstract word replaced by a concrete one. No "impactful", "leverage", "synergy".
 - Active voice always. "The ball moved" not "the ball was moved."
 - Strong verbs. Not "he was running" — "he sprinted." Not "she felt nervous" — "her hands stopped."
-- Rhythm: Never three sentences of the same length in a row. Vary deliberately.
-  After a long sentence — a short one. Sometimes one word. Sometimes a fragment.
-- Every sentence earns its place. If it repeats something already said — cut it.
 
 BANNED WORDS: utilize, leverage, impactful, holistic, synergy, paradigm,
 "it's important to note", "in today's world", "needless to say",
@@ -1566,7 +1563,12 @@ STRUCTURE
 
 - Short paragraphs — 2 to 4 lines max. Blank line between paragraphs.
 - Section headings: ### before each heading
-- No bullet points or numbered lists in the main body
+- No bullet points or numbered lists in the main body. Hard rule — no exceptions.
+  When you feel the urge to write a list, that is a signal to write better prose instead.
+  Convert every list into flowing sentences that show HOW the ideas connect, not just what they are.
+  WRONG: "1. Chronotype audit – track sleep times. 2. Energy-cue test – note post-meal energy. 3. Stress gauge – is the window a choice or an obligation?"
+  RIGHT: "Start by tracking your sleep-onset times — your chronotype shapes when your metabolism wants food. Then watch your energy after meals: a dip signals misalignment. The clearest warning is psychological — if the window feels like an obligation, you are already activating the stress pathway that undoes the metabolic work."
+
 - No emojis, no hashtags
 - Never open a section by announcing what it covers. Start mid-argument — a fact, scene, claim, or contradiction.
 
@@ -1592,6 +1594,7 @@ If a stat IS in the registry — use it and cite (CLAIM-ID) inline.
 
 CITATION VOICE RULE:
 Embed sources minimally — "one analyst noted" or "research found." Never paste a full name + institutional credential mid-sentence. The fact matters. The CV doesn't.
+One institution per claim. Never credit the same finding to two different bodies in the same sentence — e.g. "A University of Zurich trial (Harvard Chronotype Study)" is a contradiction. Pick one label or use neither. If you are unsure of the exact source, write "research suggests" and leave it at that.
 
 ═══════════════════════════════════════
 SCENE-FIRST RULE
@@ -1752,6 +1755,45 @@ FIXED: [fixed sentence]
     #   b) Named specific events ("In the 2024 IPL semi-final...", "During the World Cup final against...")
     # Cross-check each against the dossier. If not found — fix it.
     corrected_blog = _audit_named_claims(corrected_blog, dossier, topic)
+
+    # ── Step 4: Attribution guard — fix confused source labels ───────────────
+    # Detects sentences that credit the same claim to two different institutions
+    # e.g. "A University of Zurich trial (Harvard Chronotype Study)"
+    # These are hallucinated double-attributions. Replace with "research suggests".
+    import re as _re2
+    double_attr = _re2.compile(
+        r'(?:(?:University|Institute|College|School|Center|Centre)\s+of\s+\w+|'
+        r'(?:Harvard|Stanford|Oxford|MIT|Yale|Cornell|Princeton|Columbia|'
+        r'Johns Hopkins|Mayo Clinic|CDC|WHO|NIH)[^.]*?)'
+        r'[^.]*?'
+        r'(?:(?:University|Institute|College|School|Center|Centre)\s+of\s+\w+|'
+        r'(?:Harvard|Stanford|Oxford|MIT|Yale|Cornell|Princeton|Columbia|'
+        r'Johns Hopkins|Mayo Clinic|CDC|WHO|NIH))',
+        _re2.IGNORECASE
+    )
+    sentences = _re2.split(r'(?<=[.!?])\s+', corrected_blog)
+    fixed_sentences = []
+    attribution_fixes = 0
+    for sent in sentences:
+        if double_attr.search(sent):
+            # Replace the entire attribution phrase with a neutral label
+            fixed = _re2.sub(
+                r'(?:A|An|The)\s+(?:(?:University|Institute|College|School|'
+                r'Center|Centre)\s+of\s+\w+|(?:Harvard|Stanford|Oxford|MIT|'
+                r'Yale|Cornell|Princeton|Columbia|Johns Hopkins|Mayo Clinic|'
+                r'CDC|WHO|NIH))[^,.(]*(?:\([^)]*\))?',
+                'Research',
+                sent,
+                flags=_re2.IGNORECASE
+            )
+            fixed_sentences.append(fixed)
+            attribution_fixes += 1
+            logger.info(f"[AUDIT-ATTR] Fixed double attribution | original: {sent[:80]}")
+        else:
+            fixed_sentences.append(sent)
+    if attribution_fixes:
+        corrected_blog = " ".join(fixed_sentences)
+        logger.info(f"[AUDIT-ATTR] {attribution_fixes} double-attribution(s) fixed")
 
     logger.info(f"[AUDIT] Done | total_duration={time.time()-start:.1f}s")
     return corrected_blog
@@ -1981,12 +2023,18 @@ The second sentence adds no new information — it just confirms the first.
 Signs: "In other words...", "This means that...", "Put simply...", or any restatement without new content.
 Quote both sentences. The second one should be cut.
 
+PATTERN G — LISTICLE DRIFT:
+Scan every section for bullet points (-, *, •) or numbered lists (1. 2. 3.).
+Any list in the body is a failure — prose connects ideas, lists just stack them.
+If found: quote the list, write a 2–3 sentence prose rewrite that shows how the items relate.
+Answer: LISTS FOUND / NO LISTS
+
 For each pattern found:
 - Quote the offending text
 - Write ONE rewritten version that fixes it
 
 Overall answer: NATURAL / ROBOTIC
-(ROBOTIC if any pattern found in 2+ sections. NATURAL only if the blog is clean across all six.)
+(ROBOTIC if any pattern found in 2+ sections, or if ANY list is found anywhere in the body. NATURAL only if the blog is clean across all patterns.)
 
 ─────────────────────────────────────────
 Q5 — DOES THE ENDING DELIVER SOMETHING NEW?

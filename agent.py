@@ -73,6 +73,29 @@ def _check_cancelled():
         raise RuntimeError("Pipeline cancelled — stopping to avoid wasting tokens.")
 
 
+def _safe_blog(blog: str, head: int = 4_000, tail: int = 1_000) -> str:
+    """
+    Token-safe blog slicer used by every prompt that receives the full blog.
+
+    openai/gpt-oss-120b has a ~32k token context window. A long blog can be
+    6 000–9 000 words (~8 000–12 000 tokens). Combined with large system prompts
+    (write_blog is ~3 000 tokens of instructions alone) this pushes past the limit
+    and produces 413 errors.
+
+    Strategy: keep the head (opening + early sections — where most style issues live)
+    and the tail (ending — what the critic / scorer / revision needs most).
+    Middle sections are dropped with an ellipsis marker so the LLM knows content
+    was trimmed, not that the blog ends abruptly.
+
+    Default budget: 4 000 head + 1 000 tail = 5 000 chars ≈ 1 250 tokens of blog.
+    Callers that need more context (targeted_revision) pass larger values.
+    """
+    total = head + tail
+    if len(blog) <= total:
+        return blog
+    return blog[:head] + "\n...[middle sections trimmed for token budget]...\n" + blog[-tail:]
+
+
 def _invoke(prompt: str, temperature: float) -> str:
     global _key_index
 
@@ -774,8 +797,8 @@ def generate_opening_hook(topic: str, insights: str, plan: str, audience: str, n
     logger.info(f"[HOOK] Generating opening hook | topic='{topic[:60]}'")
     start = time.time()
 
-    plan_input      = plan[:1_000]     if plan      else ""
-    insights_input  = insights[:1_000] if insights  else ""
+    plan_input      = plan[:700]      if plan      else ""
+    insights_input  = insights[:700]  if insights  else ""
 
     # Extract the story spine paragraph and emotional arc from the narrative —
     # these are the parts the hook needs to align with, not the full blueprint.
@@ -1064,8 +1087,8 @@ def narrative_architect(topic: str, audience: str, insights: str, plan: str, len
     logger.info(f"[ARCHITECT] Building narrative outline | topic='{topic[:60]}'")
     start = time.time()
 
-    insights_input = insights[:1_500] if insights else ""
-    plan_input     = plan[:1_000]     if plan     else ""
+    insights_input = insights[:1_000] if insights else ""
+    plan_input     = plan[:800]       if plan     else ""
 
     beat_count = {"short": 4, "medium": 6, "long": 8}.get(length, 6)
 
@@ -1174,10 +1197,11 @@ def write_blog(topic: str, audience: str, plan: str, research_data: str, memory:
     length_instruction = LENGTH_GUIDE.get(length, LENGTH_GUIDE["medium"])
     gap_section = f"\nCompetitor Gap — what existing articles miss (address this angle):\n{gap}\n" if gap else ""
 
-    # Cap research inputs to avoid 413 token errors
-    # dossier at 5 000 chars, facts at 2 000 chars
-    verified_facts_input = verified_facts[:5_000] if verified_facts else ""
-    plan_input           = plan[:3_000] if plan else ""
+    # Cap research inputs to avoid 413 token errors.
+    # write_blog has the heaviest prompt (~3 000 tokens of instructions) so
+    # input budgets are kept tight. Total target: ≤ 10 000 prompt chars.
+    verified_facts_input = verified_facts[:3_500] if verified_facts else ""
+    plan_input           = plan[:2_000]           if plan           else ""
 
     # Extract topic type from strategy plan for adaptive mechanic weighting
     import re as _re
@@ -1359,7 +1383,7 @@ Do not change it. Do not add "Introduction" before it. The blog starts with this
     if insights and insights.strip():
         insights_section = f"""
 CORE INSIGHTS TO BUILD THE BLOG AROUND:
-{insights[:2_000]}
+{insights[:1_200]}
 
 One of these should be the spine of the whole blog. Pick the one that fits best and develop it deeply.
 Don't just mention all three and move on — choose one as the central argument and let the others support it.
@@ -1387,16 +1411,16 @@ Don't just mention all three and move on — choose one as the central argument 
         part3_text = part3_match.group(1).strip() if part3_match else ""
 
         if part2_text or part3_text:
-            # Compose from extracted sections with generous individual caps
+            # Compose from extracted sections with tight individual caps
             narrative_body = ""
             if part2_text:
-                narrative_body += part2_text[:2_500] + "\n\n"
+                narrative_body += part2_text[:1_800] + "\n\n"
             if part3_text:
-                narrative_body += part3_text[:2_500]
+                narrative_body += part3_text[:1_800]
             narrative_body = narrative_body.strip()
         else:
-            # Fallback: no PART markers found — send full narrative up to 5,000 chars
-            narrative_body = narrative[:5_000]
+            # Fallback: no PART markers found — send full narrative up to 3 600 chars
+            narrative_body = narrative[:3_600]
 
         # Extract STORY ANCHOR — the concrete thread the writer must return to
         anchor_match = _re2.search(r'STORY ANCHOR:\s*([^\n]+)', narrative, _re2.IGNORECASE)
@@ -1460,7 +1484,7 @@ RESEARCH DOSSIER — FACTS YOU CAN USE:
 {verified_facts_input}
 
 PAST CONTEXT:
-{memory}
+{memory[:800] if memory else ""}
 
 ═══════════════════════════════════════
 WHAT A BLOG IS
@@ -1873,14 +1897,14 @@ def critique_and_rewrite(blog: str, topic: str, audience: str, narrative: str = 
     if narrative and narrative.strip():
         narrative_ref = f"""
 NARRATIVE BLUEPRINT (what the blog was supposed to do):
-{narrative[:1_500]}
+{narrative[:800]}
 
 Check whether the writer actually executed each beat's JOB.
 """
 
     # Pre-compute blog slice — avoids backslash-in-f-string on Python 3.10
     _ELLIPSIS = "\n...\n"
-    _blog_for_critic = blog if len(blog) < 8_000 else blog[:5_500] + _ELLIPSIS + blog[-1_500:]
+    _blog_for_critic = _safe_blog(blog, head=4_000, tail=1_000)
 
     prompt = f"""
 You are a story critic — not a proofreader. You diagnose where the reader's journey broke down.
@@ -2254,7 +2278,7 @@ HARD RULES
 - Return the FULL revised blog — no commentary, no labels, no explanation.
 
 Original Blog:
-{blog}
+{_safe_blog(blog, head=5_500, tail=1_500)}
 """
     result = _invoke(prompt, temperature=0.5)
     logger.info(f"[REVISION] Done | duration={time.time()-start:.1f}s | words={len(result.split())}")

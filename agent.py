@@ -1613,6 +1613,12 @@ Before writing each section: would a passionate reader learn something, feel som
 If no — rewrite until yes.
 
 Write the full blog now. {"Start with the hook above." if hook else "Start with a scene, tension, uncomfortable truth, or question. Not the topic name. Not a definition. Not 'Introduction'."}
+
+CRITICAL — DO NOT WRITE A CLOSING PARAGRAPH.
+The final paragraph of your blog will be replaced by a dedicated ending generator.
+Your job is to write every section fully — but stop before writing any kind of conclusion,
+summary, or closing thought. End your last section mid-argument if needed.
+The ending generator will close the blog. You close each section. Not the blog.
 """
     result = _invoke(prompt, temperature=0.65)
     logger.info(f"[WRITER] Done | topic_type={topic_type} | duration={time.time()-start:.1f}s | words={len(result.split())}")
@@ -2042,6 +2048,11 @@ Q5 — DOES THE ENDING DELIVER SOMETHING NEW?
 The ending should say something the reader couldn't have predicted from the opening.
 Not a summary. Not "this proves that X." A new thought.
 
+ALSO CHECK — DOUBLE ENDING:
+Read the last two paragraphs of the blog. If BOTH feel like closers — a wrap-up followed
+by another wrap-up — that is a double ending. The blog closes twice and lands half as hard.
+Flag it: DOUBLE ENDING DETECTED — quote both paragraphs and state which one to keep.
+
 ALSO CHECK — THESIS CONTRADICTION:
 Read the title or opening premise. Now read the final paragraph.
 Does the ending AGREE with the opening argument — or does it accidentally argue the opposite?
@@ -2052,9 +2063,10 @@ Example of a contradiction to catch:
 - That ending CONTRADICTS the thesis. The blog promised to argue losses have value,
   then concluded losses prove the opposite. Flag this as a critical failure.
 
-Answer: NEW / SUMMARY / CONTRADICTION
+Answer: NEW / SUMMARY / CONTRADICTION / DOUBLE ENDING
 If SUMMARY — what should the ending actually say? (One sentence of direction)
-If CONTRADICTION — quote the specific line that contradicts the opening, and state what the ending should argue instead:
+If CONTRADICTION — quote the specific line that contradicts the opening, and state what the ending should argue instead
+If DOUBLE ENDING — quote both paragraphs, state which one is stronger, the other must be cut:
 
 ─────────────────────────────────────────
 Q6 — THE ONE THING TEST
@@ -2257,8 +2269,14 @@ WRONG: "To understand what made him different, we need to look at his technical 
 RIGHT: "His back-lift was always too high. Everyone could see it. Almost no one saw what he did about it."
 
 ─────────────────────────────────────────
-FIX 5 — ENDING (if Q5 = SUMMARY or CONTRADICTION)
+FIX 5 — ENDING (if Q5 = SUMMARY or CONTRADICTION or DOUBLE ENDING)
 ─────────────────────────────────────────
+
+CRITICAL — IF Q5 = DOUBLE ENDING:
+Two closing paragraphs are stacked. The blog closes twice and lands half as hard.
+Keep the stronger one. Delete the other entirely. Do not rewrite either.
+The blog ends once. Hard stop.
+
 Delete the current ending entirely. Write a new final section: 3-5 sentences.
 
 CRITICAL — IF Q5 = CONTRADICTION:

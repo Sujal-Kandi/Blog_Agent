@@ -244,15 +244,45 @@ def node_ending(state: BlogState) -> dict:
         _log.warning("[ENDING] Could not locate last paragraph — falling back to append")
         new_final_blog = draft.rstrip() + "\n\n" + ending_clean
     else:
-        body_parts  = paragraphs[:last_para_idx]
-        body        = "\n\n".join(body_parts).rstrip()
+        # ── Strip writer closing tail ─────────────────────────────────────────
+        # The writer sometimes writes a natural wrap-up at the end of the last
+        # section even though the prompt says not to. We detect this by scanning
+        # backward from the last paragraph and dropping any paragraphs that look
+        # like a closing summary (short, no new claim, ends the arc).
+        #
+        # Heuristic: if the last 1-2 non-heading paragraphs are ≤40 words AND
+        # they begin with a "closing signal" phrase, drop them too so the ending
+        # generator has a clean insertion point.
+        CLOSING_SIGNALS = (
+            "when you ", "by letting ", "the pause ", "the fast ", "the next time ",
+            "you first ", "now those ", "you may have ", "the data shows ",
+            "sleep loss is ", "these figures ", "by ignoring ",
+            "the takeaway ", "ultimately ", "in the end ", "what this means ",
+            "so the next ", "protect ", "remember that ", "the lesson ",
+        )
+
+        cut_to = last_para_idx  # default: replace only the last paragraph
+        for look_back in range(last_para_idx, max(last_para_idx - 3, -1), -1):
+            block = paragraphs[look_back].strip()
+            if not block or block.startswith("#"):
+                continue
+            words = block.split()
+            is_short = len(words) <= 45
+            starts_with_signal = any(block.lower().startswith(s) for s in CLOSING_SIGNALS)
+            if is_short and starts_with_signal:
+                cut_to = look_back  # extend the cut one paragraph further back
+            else:
+                break  # stop as soon as we hit a substantive paragraph
+
+        body_parts = paragraphs[:cut_to]
+        body       = "\n\n".join(body_parts).rstrip()
         new_final_blog = body + "\n\n" + ending_clean
 
-    # Safety: replacement should never lose more than 15% of the blog's words
-    # (the last paragraph we dropped should be small relative to the whole).
+    # Safety: replacement should never lose more than 25% of the blog's words.
+    # We may strip 1-3 writer closing paragraphs, so the threshold is wider than before.
     before_words = len(draft.split())
     after_words  = len(new_final_blog.split())
-    if after_words < before_words * 0.85:
+    if after_words < before_words * 0.75:
         _log.warning(
             f"[ENDING] Replacement shrank blog too much "
             f"({before_words} → {after_words} words) — keeping original"
